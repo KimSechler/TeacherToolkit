@@ -40,7 +40,13 @@ export async function generateQuestions(topic: string, grade: string, count: num
     return result.questions || [];
   } catch (error) {
     console.error("Error generating questions:", error);
-    throw new Error("Failed to generate questions");
+    
+    // Handle quota exceeded gracefully
+    if (error instanceof Error && (error.message.includes('insufficient_quota') || error.message.includes('quota'))) {
+      throw new Error('OpenAI API quota exceeded. Please check your billing details or try again later.');
+    }
+    
+    throw new Error("Failed to generate questions. Please try again.");
   }
 }
 
@@ -89,7 +95,13 @@ export async function generateGameTheme(themeName: string, description: string) 
     return result.theme || {};
   } catch (error) {
     console.error("Error generating theme:", error);
-    throw new Error("Failed to generate theme");
+    
+    // Handle quota exceeded gracefully
+    if (error instanceof Error && (error.message.includes('insufficient_quota') || error.message.includes('quota'))) {
+      throw new Error('OpenAI API quota exceeded. Please check your billing details or try again later.');
+    }
+    
+    throw new Error("Failed to generate theme. Please try again.");
   }
 }
 

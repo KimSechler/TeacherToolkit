@@ -1,0 +1,574 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Fredoka', sans-serif;
+        }
+        /* iOS Safari scrolling fixes */
+        html {
+            -webkit-overflow-scrolling: touch;
+            overflow-x: hidden;
+        }
+        
+        body {
+            -webkit-overflow-scrolling: touch;
+            overflow-x: hidden;
+            touch-action: pan-y pinch-zoom;
+            min-height: 100vh;
+        }
+        
+        .puppy-icon {
+            cursor: grab;
+            transition: transform 0.2s;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .puppy-icon:active {
+            cursor: grabbing;
+            transform: scale(1.1);
+        }
+        .puppy-icon.selected {
+            transform: scale(1.1);
+            filter: drop-shadow(0 0 15px rgba(245, 158, 11, 0.6));
+        }
+        .puppy-icon.selected .text-lg {
+            background-color: #fef3c7 !important;
+            border: 2px solid #f59e0b;
+        }
+        .answer-zone-clickable {
+            cursor: pointer;
+        }
+        .answer-zone-clickable:hover {
+            opacity: 0.8;
+        }
+        .drop-zone {
+            min-height: 120px;
+            transition: all 0.3s;
+            touch-action: pan-y;
+        }
+        .drop-zone.drag-over {
+            background-color: #fef3c7;
+            border-color: #f59e0b;
+            transform: scale(1.02);
+        }
+        .settings-panel {
+            transform: translateX(100%);
+            transition: transform 0.3s;
+            -webkit-overflow-scrolling: touch;
+            touch-action: pan-y;
+        }
+        .settings-panel.open {
+            transform: translateX(0);
+        }
+        
+        /* Force hardware acceleration for smooth scrolling */
+        .main-content {
+            -webkit-transform: translateZ(0);
+            transform: translateZ(0);
+            -webkit-overflow-scrolling: touch;
+            touch-action: pan-y pinch-zoom;
+        }
+        
+        /* Ensure scrollable containers work on iOS */
+        .scrollable-container {
+            -webkit-overflow-scrolling: touch;
+            touch-action: pan-y;
+        }
+        
+        /* Prevent iOS zoom on double tap */
+        * {
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        /* Ensure touch events work properly */
+        button, .puppy-icon {
+            -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-100 to-purple-100 min-h-screen">
+    <!-- Header -->
+    <div class="bg-white shadow-lg p-4 mb-6">
+        <div class="flex justify-between items-center max-w-7xl mx-auto">
+            <h1 class="text-3xl font-bold text-purple-700">🐶 Puppy Attendance Tracker</h1>
+            <div class="flex gap-3">
+                <button onclick="toggleSettings()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium">
+                    ⚙️ Settings
+                </button>
+                <button onclick="downloadReport()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium">
+                    📊 Download Report
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content scrollable-container max-w-7xl mx-auto px-4">
+        <!-- Question Section -->
+        <div class="bg-white rounded-2xl shadow-xl p-8 mb-8">
+            <h2 class="text-3xl font-bold text-purple-800 mb-6">📝 Today's Question</h2>
+            <div class="bg-gradient-to-r from-yellow-200 to-orange-200 rounded-2xl p-6 border-4 border-yellow-300">
+                <p id="currentQuestion" class="text-2xl font-bold text-gray-800">Do you like pizza?</p>
+            </div>
+        </div>
+
+        <!-- Answer Zones -->
+        <div id="answerZones" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div class="drop-zone bg-green-100 border-2 border-green-300 rounded-xl p-6 border-dashed" 
+                 ondrop="drop(event)" ondragover="allowDrop(event)" ondragleave="dragLeave(event)" data-answer="Yes">
+                <h4 class="text-2xl font-bold text-green-700 mb-4 text-center">✅ Yes</h4>
+                <div class="dropped-puppies grid grid-cols-3 gap-2"></div>
+            </div>
+            
+            <div class="drop-zone bg-red-100 border-2 border-red-300 rounded-xl p-6 border-dashed" 
+                 ondrop="drop(event)" ondragover="allowDrop(event)" ondragleave="dragLeave(event)" data-answer="No">
+                <h4 class="text-2xl font-bold text-red-700 mb-4 text-center">❌ No</h4>
+                <div class="dropped-puppies grid grid-cols-3 gap-2"></div>
+            </div>
+        </div>
+
+        <!-- Student Icons Section -->
+        <div class="drop-zone bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl shadow-xl p-8 mb-8 border-4 border-blue-200 border-dashed" 
+             ondrop="dropToOriginal(event)" ondragover="allowDrop(event)" ondragleave="dragLeave(event)" onclick="originalSectionClick(event)">
+            <h3 class="text-2xl font-bold text-blue-800 mb-6">👥 Students - Drag Your Puppy to Answer!</h3>
+            <div id="studentIcons" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                <!-- Student icons will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div id="settingsPanel" class="settings-panel fixed top-0 right-0 h-full w-80 bg-white shadow-2xl z-50 overflow-y-auto">
+        <div class="p-6">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-gray-800">Settings</h3>
+                <button onclick="toggleSettings()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+            
+            <!-- Question Settings -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Daily Question</label>
+                <textarea id="questionInput" class="w-full p-3 border border-gray-300 rounded-lg" rows="3">Do you like pizza?</textarea>
+                <button onclick="updateQuestion()" class="mt-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">Update Question</button>
+            </div>
+
+            <!-- Answer Options -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Answer Options (one per line)</label>
+                <textarea id="answersInput" class="w-full p-3 border border-gray-300 rounded-lg" rows="2">Yes
+No</textarea>
+                <button onclick="updateAnswers()" class="mt-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">Update Options</button>
+            </div>
+
+            <!-- Student Names -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Student Names (one per line)</label>
+                <textarea id="studentsInput" class="w-full p-3 border border-gray-300 rounded-lg" rows="6">Emma
+Liam
+Sophia
+Noah
+Olivia
+Mason
+Ava
+Lucas</textarea>
+                <button onclick="updateStudents()" class="mt-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">Update Students</button>
+            </div>
+
+            <!-- Puppy Style -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Puppy Style</label>
+                <select id="puppyStyle" onchange="changePuppyStyle()" class="w-full p-3 border border-gray-300 rounded-lg">
+                    <option value="classic">🐶 Classic Puppies</option>
+                    <option value="colorful">🌈 Colorful Puppies</option>
+                    <option value="cute">😊 Cute Puppies</option>
+                </select>
+            </div>
+
+            <!-- Reset Button -->
+            <button onclick="resetAll()" class="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">
+                Reset All Positions
+            </button>
+        </div>
+    </div>
+
+    <!-- Overlay -->
+    <div id="overlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden" onclick="toggleSettings()"></div>
+
+    <script>
+        // Default data
+        let students = ['Emma', 'Liam', 'Sophia', 'Noah', 'Olivia', 'Mason', 'Ava', 'Lucas'];
+        let currentPuppyStyle = 'classic';
+        let attendanceData = {};
+        let selectedStudent = null;
+
+        const puppyStyles = {
+            classic: ['🐶', '🐕', '🦮', '🐕‍🦺'],
+            colorful: ['🐶', '🟤', '⚫', '🤍', '🟡', '🔴', '🔵', '🟢'],
+            cute: ['🐶', '😊', '🥰', '😍', '🤗', '😘', '🥳', '😎']
+        };
+
+        // Initialize the app
+        function initializeApp() {
+            generateStudentIcons();
+            updateAnswerZones();
+        }
+
+        // Generate student icons
+        function generateStudentIcons() {
+            const container = document.getElementById('studentIcons');
+            container.innerHTML = '';
+            
+            students.forEach((student, index) => {
+                const puppyEmoji = puppyStyles[currentPuppyStyle][index % puppyStyles[currentPuppyStyle].length];
+                const iconDiv = document.createElement('div');
+                iconDiv.className = 'puppy-icon text-center cursor-pointer hover:scale-105 transition-transform';
+                iconDiv.draggable = true;
+                iconDiv.ondragstart = drag;
+                iconDiv.onclick = selectStudent;
+                iconDiv.dataset.student = student;
+                iconDiv.innerHTML = `
+                    <div class="text-6xl mb-2">${puppyEmoji}</div>
+                    <div class="text-lg font-medium text-gray-800 bg-white rounded-full px-3 py-1 shadow-sm">${student}</div>
+                `;
+                container.appendChild(iconDiv);
+            });
+        }
+
+        // Update answer zones based on current answers
+        function updateAnswerZones() {
+            const answersText = document.getElementById('answersInput').value;
+            const answers = answersText.split('\n').filter(a => a.trim());
+            const container = document.getElementById('answerZones');
+            
+            const colors = ['green', 'red', 'blue', 'yellow', 'purple', 'pink', 'indigo', 'orange'];
+            const emojis = ['✅', '❌', '🔵', '🟡', '🟣', '🩷', '🟦', '🟠'];
+            
+            container.innerHTML = '';
+            
+            // Determine grid layout based on number of answers
+            const gridClass = answers.length <= 2 ? 'grid-cols-1 md:grid-cols-2' : 
+                             answers.length <= 3 ? 'grid-cols-1 md:grid-cols-3' : 
+                             'grid-cols-1 md:grid-cols-2 lg:grid-cols-4';
+            container.className = `grid ${gridClass} gap-6 mb-6`;
+            
+            answers.forEach((answer, index) => {
+                const color = colors[index % colors.length];
+                const emoji = emojis[index % emojis.length];
+                
+                const zoneDiv = document.createElement('div');
+                zoneDiv.className = `drop-zone bg-${color}-100 border-2 border-${color}-300 rounded-xl p-6 border-dashed`;
+                zoneDiv.ondrop = drop;
+                zoneDiv.ondragover = allowDrop;
+                zoneDiv.ondragleave = dragLeave;
+                zoneDiv.onclick = answerZoneClick;
+                zoneDiv.dataset.answer = answer.trim();
+                zoneDiv.innerHTML = `
+                    <h4 class="text-2xl font-bold text-${color}-700 mb-4 text-center">${emoji} ${answer.trim()}</h4>
+                    <div class="dropped-puppies grid grid-cols-3 gap-2"></div>
+                `;
+                container.appendChild(zoneDiv);
+            });
+        }
+
+        // Student selection functions
+        function selectStudent(ev) {
+            // Clear previous selection
+            document.querySelectorAll('.puppy-icon').forEach(icon => {
+                icon.classList.remove('selected');
+            });
+            
+            // Select current student
+            ev.currentTarget.classList.add('selected');
+            selectedStudent = ev.currentTarget.dataset.student;
+            
+            // Update answer zones to show they're clickable
+            document.querySelectorAll('.drop-zone').forEach(zone => {
+                zone.classList.add('answer-zone-clickable');
+            });
+        }
+
+        function answerZoneClick(ev) {
+            if (!selectedStudent) return;
+            
+            const answer = ev.currentTarget.dataset.answer;
+            moveStudentToAnswer(selectedStudent, answer);
+            
+            // Clear selection
+            clearSelection();
+        }
+
+        function originalSectionClick(ev) {
+            if (!selectedStudent) return;
+            
+            // Only process if clicking on the container, not a student
+            if (ev.target.classList.contains('puppy-icon') || ev.target.closest('.puppy-icon')) return;
+            
+            moveStudentToOriginal(selectedStudent);
+            clearSelection();
+        }
+
+        function moveStudentToOriginal(studentName) {
+            // Remove student from previous location
+            document.querySelectorAll('.puppy-icon').forEach(icon => {
+                if (icon.dataset.student === studentName) {
+                    icon.remove();
+                }
+            });
+            
+            // Add back to original student section
+            const container = document.getElementById('studentIcons');
+            const studentIndex = students.indexOf(studentName);
+            const puppyEmoji = puppyStyles[currentPuppyStyle][studentIndex % puppyStyles[currentPuppyStyle].length];
+            
+            const iconDiv = document.createElement('div');
+            iconDiv.className = 'puppy-icon text-center cursor-pointer hover:scale-105 transition-transform';
+            iconDiv.draggable = true;
+            iconDiv.ondragstart = drag;
+            iconDiv.onclick = selectStudent;
+            iconDiv.dataset.student = studentName;
+            iconDiv.innerHTML = `
+                <div class="text-6xl mb-2">${puppyEmoji}</div>
+                <div class="text-lg font-medium text-gray-800 bg-white rounded-full px-3 py-1 shadow-sm">${studentName}</div>
+            `;
+            
+            container.appendChild(iconDiv);
+            
+            // Remove from attendance data
+            delete attendanceData[studentName];
+        }
+
+        function clearSelection() {
+            selectedStudent = null;
+            document.querySelectorAll('.puppy-icon').forEach(icon => {
+                icon.classList.remove('selected');
+            });
+            document.querySelectorAll('.drop-zone').forEach(zone => {
+                zone.classList.remove('answer-zone-clickable');
+            });
+        }
+
+        function moveStudentToAnswer(studentName, answer) {
+            // Remove student from previous location
+            document.querySelectorAll('.puppy-icon').forEach(icon => {
+                if (icon.dataset.student === studentName) {
+                    icon.remove();
+                }
+            });
+            
+            // Add to new location
+            const targetZone = document.querySelector(`[data-answer="${answer}"]`);
+            const droppedContainer = targetZone.querySelector('.dropped-puppies');
+            const studentIndex = students.indexOf(studentName);
+            const puppyEmoji = puppyStyles[currentPuppyStyle][studentIndex % puppyStyles[currentPuppyStyle].length];
+            
+            const newIcon = document.createElement('div');
+            newIcon.className = 'puppy-icon text-center cursor-pointer hover:scale-105 transition-transform';
+            newIcon.draggable = true;
+            newIcon.ondragstart = drag;
+            newIcon.onclick = selectStudent;
+            newIcon.dataset.student = studentName;
+            newIcon.innerHTML = `
+                <div class="text-4xl mb-1">${puppyEmoji}</div>
+                <div class="text-sm font-medium text-gray-800 bg-white rounded-full px-2 py-1 shadow-sm">${studentName}</div>
+            `;
+            
+            droppedContainer.appendChild(newIcon);
+            
+            // Update attendance data
+            attendanceData[studentName] = answer;
+        }
+
+        // Drag and drop functions
+        function drag(ev) {
+            ev.dataTransfer.setData("text", ev.target.dataset.student);
+            ev.target.style.opacity = '0.5';
+            clearSelection(); // Clear any tap selection when dragging
+        }
+
+        function dropToOriginal(ev) {
+            ev.preventDefault();
+            ev.currentTarget.classList.remove('drag-over');
+            
+            const studentName = ev.dataTransfer.getData("text");
+            
+            // Remove student from previous location
+            document.querySelectorAll('.puppy-icon').forEach(icon => {
+                if (icon.dataset.student === studentName) {
+                    icon.style.opacity = '1';
+                    icon.remove();
+                }
+            });
+            
+            // Add back to original student section
+            const container = document.getElementById('studentIcons');
+            const studentIndex = students.indexOf(studentName);
+            const puppyEmoji = puppyStyles[currentPuppyStyle][studentIndex % puppyStyles[currentPuppyStyle].length];
+            
+            const iconDiv = document.createElement('div');
+            iconDiv.className = 'puppy-icon text-center cursor-pointer hover:scale-105 transition-transform';
+            iconDiv.draggable = true;
+            iconDiv.ondragstart = drag;
+            iconDiv.onclick = selectStudent;
+            iconDiv.dataset.student = studentName;
+            iconDiv.innerHTML = `
+                <div class="text-6xl mb-2">${puppyEmoji}</div>
+                <div class="text-lg font-medium text-gray-800 bg-white rounded-full px-3 py-1 shadow-sm">${studentName}</div>
+            `;
+            
+            container.appendChild(iconDiv);
+            
+            // Remove from attendance data
+            delete attendanceData[studentName];
+        }
+
+        function allowDrop(ev) {
+            ev.preventDefault();
+            ev.currentTarget.classList.add('drag-over');
+        }
+
+        function dragLeave(ev) {
+            ev.currentTarget.classList.remove('drag-over');
+        }
+
+        function drop(ev) {
+            ev.preventDefault();
+            ev.currentTarget.classList.remove('drag-over');
+            
+            const studentName = ev.dataTransfer.getData("text");
+            const answer = ev.currentTarget.dataset.answer;
+            
+            // Remove student from previous location
+            document.querySelectorAll('.puppy-icon').forEach(icon => {
+                if (icon.dataset.student === studentName) {
+                    icon.style.opacity = '1';
+                    icon.remove();
+                }
+            });
+            
+            // Add to new location
+            const droppedContainer = ev.currentTarget.querySelector('.dropped-puppies');
+            const studentIndex = students.indexOf(studentName);
+            const puppyEmoji = puppyStyles[currentPuppyStyle][studentIndex % puppyStyles[currentPuppyStyle].length];
+            
+            const newIcon = document.createElement('div');
+            newIcon.className = 'puppy-icon text-center cursor-pointer hover:scale-105 transition-transform';
+            newIcon.draggable = true;
+            newIcon.ondragstart = drag;
+            newIcon.onclick = selectStudent;
+            newIcon.dataset.student = studentName;
+            newIcon.innerHTML = `
+                <div class="text-4xl mb-1">${puppyEmoji}</div>
+                <div class="text-sm font-medium text-gray-800 bg-white rounded-full px-2 py-1 shadow-sm">${studentName}</div>
+            `;
+            
+            droppedContainer.appendChild(newIcon);
+            
+            // Update attendance data
+            attendanceData[studentName] = answer;
+        }
+
+        // Settings functions
+        function toggleSettings() {
+            const panel = document.getElementById('settingsPanel');
+            const overlay = document.getElementById('overlay');
+            
+            panel.classList.toggle('open');
+            overlay.classList.toggle('hidden');
+        }
+
+        function updateQuestion() {
+            const newQuestion = document.getElementById('questionInput').value;
+            document.getElementById('currentQuestion').textContent = newQuestion;
+        }
+
+        function updateAnswers() {
+            updateAnswerZones();
+        }
+
+        function updateStudents() {
+            const studentsText = document.getElementById('studentsInput').value;
+            students = studentsText.split('\n').filter(s => s.trim()).map(s => s.trim());
+            attendanceData = {}; // Reset attendance data
+            generateStudentIcons();
+        }
+
+        function changePuppyStyle() {
+            currentPuppyStyle = document.getElementById('puppyStyle').value;
+            generateStudentIcons();
+            
+            // Update dropped puppies
+            document.querySelectorAll('.dropped-puppies .puppy-icon').forEach(icon => {
+                const studentName = icon.dataset.student;
+                const studentIndex = students.indexOf(studentName);
+                const puppyEmoji = puppyStyles[currentPuppyStyle][studentIndex % puppyStyles[currentPuppyStyle].length];
+                icon.querySelector('div:first-child').textContent = puppyEmoji;
+            });
+        }
+
+        function resetAll() {
+            attendanceData = {};
+            clearSelection();
+            document.querySelectorAll('.dropped-puppies').forEach(container => {
+                container.innerHTML = '';
+            });
+            generateStudentIcons();
+        }
+
+        function downloadReport() {
+            const question = document.getElementById('currentQuestion').textContent;
+            const date = new Date().toLocaleDateString();
+            
+            let report = `Attendance Report - ${date}\n`;
+            report += `Question: ${question}\n\n`;
+            
+            // Count responses
+            const responseCounts = {};
+            Object.values(attendanceData).forEach(answer => {
+                responseCounts[answer] = (responseCounts[answer] || 0) + 1;
+            });
+            
+            report += 'Response Summary:\n';
+            Object.entries(responseCounts).forEach(([answer, count]) => {
+                report += `${answer}: ${count} students\n`;
+            });
+            
+            report += '\nDetailed Responses:\n';
+            Object.entries(attendanceData).forEach(([student, answer]) => {
+                report += `${student}: ${answer}\n`;
+            });
+            
+            // Students who haven't responded
+            const respondedStudents = Object.keys(attendanceData);
+            const notResponded = students.filter(s => !respondedStudents.includes(s));
+            if (notResponded.length > 0) {
+                report += '\nNot Responded:\n';
+                notResponded.forEach(student => {
+                    report += `${student}: No response\n`;
+                });
+            }
+            
+            // Create and download file
+            const blob = new Blob([report], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `attendance-report-${date.replace(/\//g, '-')}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+
+        // Initialize the app when page loads
+        document.addEventListener('DOMContentLoaded', initializeApp);
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'95bc3af2a1a30fd6',t:'MTc1MTk0MjU2Ni4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
