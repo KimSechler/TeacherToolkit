@@ -1,0 +1,68 @@
+Goal:
+Build a sleek, modern, full-stack web application for teachers that includes:
+
+A customizable Attendance Tracker Tool
+A dynamic Game Creator Engine
+An AI-powered Teacher Assistant
+Support for future expansion (modular architecture)
+🔐 User System & Admin Features
+Secure teacher login/signup with email + password and optional Google OAuth
+Each teacher should manage:
+Multiple class lists (CRUD)
+A saved question bank and answer options
+A personal tool panel with access to all created games and attendance reports
+📋 Attendance Tracker Tool
+Teachers can:
+View & edit student lists
+Toggle a "Question of the Day" with predefined or custom questions
+Drag and drop puppy-themed icons (or custom avatars) onto visual answers
+Features:
+Daily attendance auto-saves per class
+Records associated question + student answer
+Downloadable attendance reports (CSV or PDF)
+Responsive for whiteboard/tablet use
+Toggleable settings:
+Enable random QOTD from teacher’s bank or default system-wide bank
+Enable/disable drag-to-answer visuals
+Customize avatar sets
+🕹 Game Creation Engine
+Teachers can:
+Choose between different game templates (e.g., multiple choice, matching, drag-drop)
+Add question/answer pairs or word lists with optional images
+Preview and deploy games live for classroom use
+Use different visual themes (e.g., Halloween, Jungle, Space, etc.)
+🤖 AI Assistant Features
+AI sidebar assistant (chat interface) that supports:
+Generating new question lists or quizzes (e.g., “10 ocean animals for 2nd grade”)
+Auto-creating matching word/picture lists
+Uploading PDFs → parsing text → suggesting game content
+Generating new game themes with styles and icons (DALL·E or preset themes)
+Suggesting classroom engagement ideas or customizing tools
+Optionally integrates OpenAI GPT-4 + DALL·E APIs
+🗃 Tech Stack (Suggested)
+Frontend: React + Tailwind CSS
+Backend: Node.js (Express or Next.js API routes)
+Auth: Supabase Auth or Firebase Auth (Google OAuth support)
+Database: Supabase or Firebase for storing:
+Users
+Classes
+Questions
+Attendance data
+Games & templates
+AI Integration: OpenAI GPT-4 API + optional DALL·E for theme/image generation
+Optional: PDF parsing via pdf-parse or upload to Cloudinary + GPT
+🧱 Architecture Notes
+Use modular code to allow future tools to be added (e.g., behavior tracker, flashcard game, quiz scoreboard)
+Store game data as structured JSON (template + content)
+Game templates can be rendered dynamically based on selected theme and teacher input
+🎨 Design Requirements
+Modern, interactive UI inspired by Canva and Pink Cat Games (but better looking)
+Drag-and-drop interactions (React DnD or similar)
+Colorful but clean (suitable for kids and teachers)
+Responsive: works well on tablets, desktops, and smartboards
+📦 Deliverables
+Frontend code with full UI (React + Tailwind)
+Backend with auth, session management, DB access
+AI Assistant integration
+Commented code and modular structure for maintainability and scalability
+Sample games and attendance data for demo purposes
