@@ -64,12 +64,25 @@ export const queryClient = new QueryClient({
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
-      refetchOnWindowFocus: false,
-      staleTime: Infinity,
-      retry: false,
+      refetchOnWindowFocus: true, // Enable background updates
+      staleTime: 5 * 60 * 1000, // 5 minutes - reasonable cache time
+      retry: (failureCount, error) => {
+        // Retry network errors, but not auth errors
+        if (error instanceof Error && error.message.includes('401')) {
+          return false;
+        }
+        return failureCount < 3; // Retry up to 3 times
+      },
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
     },
     mutations: {
-      retry: false,
+      retry: (failureCount, error) => {
+        // Don't retry mutations for auth errors
+        if (error instanceof Error && error.message.includes('401')) {
+          return false;
+        }
+        return failureCount < 2; // Retry mutations up to 2 times
+      },
     },
   },
 });

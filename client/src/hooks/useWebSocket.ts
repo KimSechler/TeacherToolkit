@@ -8,15 +8,34 @@ export function useWebSocket(sessionId?: string, userId?: string) {
   useEffect(() => {
     const ws = new WebSocket(`ws://${window.location.hostname}:3000`);
     wsRef.current = ws;
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => setConnected(false);
-    ws.onmessage = (event) => {
+    
+    const handleOpen = () => setConnected(true);
+    const handleClose = () => setConnected(false);
+    const handleMessage = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
         setMessages((prev) => [...prev, data]);
-      } catch {}
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
+      }
     };
-    return () => ws.close();
+    const handleError = (error: Event) => {
+      console.error('WebSocket error:', error);
+      setConnected(false);
+    };
+    
+    ws.addEventListener('open', handleOpen);
+    ws.addEventListener('close', handleClose);
+    ws.addEventListener('message', handleMessage);
+    ws.addEventListener('error', handleError);
+    
+    return () => {
+      ws.removeEventListener('open', handleOpen);
+      ws.removeEventListener('close', handleClose);
+      ws.removeEventListener('message', handleMessage);
+      ws.removeEventListener('error', handleError);
+      ws.close();
+    };
   }, [sessionId, userId]);
 
   const send = useCallback((msg: any) => {

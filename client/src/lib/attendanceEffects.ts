@@ -218,6 +218,10 @@ export class ConfettiAnimation {
       this.animationId = null;
     }
     this.particles = [];
+    // Clear canvas
+    if (this.ctx) {
+      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
   }
 }
 
@@ -352,6 +356,10 @@ export class ParticleSystem {
       this.animationId = null;
     }
     this.particles = [];
+    // Clear canvas
+    if (this.ctx) {
+      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
   }
 }
 

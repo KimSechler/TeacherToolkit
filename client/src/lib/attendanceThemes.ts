@@ -34,6 +34,39 @@ export interface AttendanceTheme {
 }
 
 export const attendanceThemes: Record<string, AttendanceTheme> = {
+  clean: {
+    id: "clean",
+    name: "Clean Template",
+    emojis: ["👤", "👤", "👤", "👤", "👤", "👤", "👤", "👤"],
+    colors: ["blue", "green", "orange", "purple", "red", "teal", "indigo", "pink"],
+    background: "bg-gradient-to-br from-slate-50 to-gray-100",
+    icon: "✨",
+    description: "Clean, minimalist design optimized for large screens",
+    glassmorphism: {
+      background: "bg-white/90 backdrop-blur-sm",
+      border: "border-gray-200",
+      shadow: "shadow-lg shadow-gray-200/50"
+    },
+    questionBox: {
+      background: "bg-white/95 backdrop-blur-sm",
+      border: "border-2 border-gray-300",
+      shadow: "shadow-xl shadow-gray-300/30"
+    },
+    answerZone: {
+      background: "bg-white/80 backdrop-blur-sm",
+      border: "border-2 border-gray-300",
+      shadow: "shadow-lg shadow-gray-300/40",
+      hover: "hover:bg-white/90 hover:scale-105 hover:shadow-xl"
+    },
+    studentCard: {
+      background: "bg-white/70 backdrop-blur-sm",
+      border: "border border-gray-200",
+      shadow: "shadow-md shadow-gray-200/30",
+      hover: "hover:scale-110 hover:shadow-lg"
+    },
+    particleCount: 0,
+    confettiColors: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899']
+  },
   puppy: {
     id: "puppy",
     name: "Puppy",

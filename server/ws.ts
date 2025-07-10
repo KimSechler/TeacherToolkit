@@ -82,9 +82,14 @@ export function setupWebSocket(httpServer: HttpServer) {
 function broadcast(sessionId: string, message: any) {
   const session = sessions[sessionId];
   if (!session) return;
+  
   Object.values(session.participants).forEach(ws => {
-    if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify(message));
+    try {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(message));
+      }
+    } catch (error) {
+      console.error('Error broadcasting message:', error);
     }
   });
 } 

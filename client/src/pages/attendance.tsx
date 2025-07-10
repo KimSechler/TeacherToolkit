@@ -355,6 +355,7 @@ export default function Attendance() {
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {/* Existing theme previews */}
                 {themes.map((theme) => {
                   const selectedClassData = classes.find((cls: Class) => cls.id === selectedClass);
                   return (
@@ -370,6 +371,36 @@ export default function Attendance() {
                     />
                   );
                 })}
+                {/* New Space Template Preview Card */}
+                <Card
+                  className="transition-all duration-300 cursor-pointer hover:shadow-lg hover:scale-105 bg-gradient-to-br from-black via-slate-900 to-blue-900 border-2 border-cyan-400"
+                  onClick={() => {
+                    const questionId = currentQuestion?.id || 'random';
+                    window.location.href = `/attendance-tracker-space/${selectedClass}?questionId=${questionId}`;
+                  }}
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">🚀</span>
+                      <CardTitle className="text-lg text-cyan-200 drop-shadow-[0_0_8px_cyan]">Space Visual Template</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="text-center mb-3">
+                      <h4 className="font-semibold text-sm text-cyan-100">Today's Question</h4>
+                      <p className="text-xs text-cyan-200 mt-1 line-clamp-2">{currentQuestion?.text || "No question selected"}</p>
+                    </div>
+                    <div className="flex justify-center gap-2 mb-3">
+                      <span className="text-3xl">🟦</span>
+                      <span className="text-3xl">🟨</span>
+                    </div>
+                    <div className="flex justify-center gap-1">
+                      <span className="text-2xl">🚀</span>
+                      <span className="text-2xl">🚀</span>
+                      <span className="text-2xl">🚀</span>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             </div>
           ) : (

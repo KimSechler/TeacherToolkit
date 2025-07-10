@@ -89,22 +89,26 @@ export default function Classes() {
   const { data: classes = [], isLoading: classesLoading } = useQuery<Class[]>({
     queryKey: ["/api/classes"],
     retry: false,
+    refetchOnWindowFocus: true,
   });
 
   const { data: students = [], isLoading: studentsLoading } = useQuery<Student[]>({
     queryKey: ["/api/classes", selectedClass?.id, "students"],
     enabled: !!selectedClass,
+    refetchOnWindowFocus: true,
   });
 
   const createClassMutation = useMutation({
     mutationFn: async (data: ClassFormData) => {
       const classData = {
         ...data,
-        teacherId: user?.id || "1" // Include teacherId from current user
+        teacherId: user?.id || "1" // Use the actual user ID from auth
       };
+      console.log("Creating class with data:", classData);
       return await apiRequest("POST", "/api/classes", classData);
     },
     onSuccess: (newClass) => {
+      console.log("Class created successfully:", newClass);
       queryClient.invalidateQueries({ queryKey: ["/api/classes"] });
       toast({
         title: "Success",
@@ -113,15 +117,18 @@ export default function Classes() {
       setIsCreatingClass(false);
       setEditingClass(null);
       classForm.reset();
-      // Select the newly created class - we'll get it from the refreshed query
+      // Select the newly created class
       setTimeout(() => {
         const classes = queryClient.getQueryData(["/api/classes"]) as Class[];
         if (classes && classes.length > 0) {
-          setSelectedClass(classes[classes.length - 1]); // Select the last (newest) class
+          const newestClass = classes[classes.length - 1];
+          console.log("Selecting newest class:", newestClass);
+          setSelectedClass(newestClass);
         }
       }, 100);
     },
     onError: (error) => {
+      console.error("Error creating class:", error);
       toast({
         title: "Error",
         description: "Failed to create class",
@@ -159,18 +166,31 @@ export default function Classes() {
         setSelectedClass(null);
       }
     },
+    onError: (error) => {
+      console.error("Error deleting class:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete class",
+        variant: "destructive",
+      });
+    },
   });
 
   const addStudentMutation = useMutation({
     mutationFn: async (data: StudentFormData) => {
+      if (!selectedClass) {
+        throw new Error("No class selected");
+      }
       const studentData = {
         ...data,
-        classId: selectedClass.id // Include classId from selected class
+        classId: selectedClass.id
       };
+      console.log("Adding student with data:", studentData);
       return await apiRequest("POST", `/api/classes/${selectedClass.id}/students`, studentData);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/classes", selectedClass.id, "students"] });
+    onSuccess: (newStudent) => {
+      console.log("Student added successfully:", newStudent);
+      queryClient.invalidateQueries({ queryKey: ["/api/classes", selectedClass?.id, "students"] });
       toast({
         title: "Success",
         description: "Student added successfully",
@@ -180,6 +200,7 @@ export default function Classes() {
       studentForm.reset();
     },
     onError: (error) => {
+      console.error("Error adding student:", error);
       toast({
         title: "Error",
         description: "Failed to add student",
@@ -215,10 +236,18 @@ export default function Classes() {
       return await apiRequest("DELETE", `/api/students/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/classes", selectedClass.id, "students"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/classes", selectedClass?.id, "students"] });
       toast({
         title: "Success",
         description: "Student removed successfully",
+      });
+    },
+    onError: (error) => {
+      console.error("Error deleting student:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete student",
+        variant: "destructive",
       });
     },
   });

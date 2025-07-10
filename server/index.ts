@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import { setupLocalAuth, isAuthenticated } from "./authLocal";
+import { setupGoogleAuth, isGoogleAuthAvailable } from "./googleAuth";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { setupWebSocket } from './ws';
@@ -22,6 +23,12 @@ app.use(session({
 }));
 
 setupLocalAuth(app);
+setupGoogleAuth(app);
+
+// Add route to check if Google OAuth is available
+app.get("/api/auth/google/available", (req, res) => {
+  res.json({ available: isGoogleAuthAvailable() });
+});
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -63,8 +70,16 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    res.status(status).json({ message });
-    throw err;
+    // Log the error for debugging
+    console.error(`[ERROR] ${status}: ${message}`, err);
+    
+    // Only send error response if headers haven't been sent
+    if (!res.headersSent) {
+      res.status(status).json({ message });
+    }
+    
+    // Don't throw the error - it will crash the server
+    // The error is already logged above
   });
 
   if (app.get("env") === "development") {

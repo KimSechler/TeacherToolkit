@@ -1,6 +1,7 @@
 import { useRoute } from "wouter";
 import { useEffect, useState } from "react";
 import AttendanceTrackerFull from "./attendance-tracker-full";
+import AttendanceTrackerClean from "./attendance-tracker-clean";
 import { getRandomQuestion, getQuestionById, QuestionOfDay } from "@/lib/questionLibrary";
 
 export default function AttendanceTrackerRoute() {
@@ -46,6 +47,11 @@ export default function AttendanceTrackerRoute() {
         </div>
       </div>
     );
+  }
+
+  // Use clean template for "clean" theme, otherwise use full template
+  if (themeId === "clean") {
+    return <AttendanceTrackerClean classId={classId} themeId={themeId} question={question} />;
   }
 
   return <AttendanceTrackerFull classId={classId} themeId={themeId} question={question} />;

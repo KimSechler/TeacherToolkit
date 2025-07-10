@@ -72,12 +72,21 @@ export default function Landing() {
               </div>
               <span className="font-bold text-xl text-gray-800">TeacherTools</span>
             </div>
-            <Button 
-              onClick={() => window.location.href = '/login'}
-              className="bg-primary hover:bg-primary/90"
-            >
-              Get Started
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                onClick={() => window.location.href = '/login'}
+                className="bg-primary hover:bg-primary/90"
+              >
+                Get Started
+              </Button>
+              <Button 
+                onClick={() => window.location.href = '/api/auth/google'}
+                variant="outline"
+                className="border-blue-500 text-blue-600 hover:bg-blue-50"
+              >
+                Test Google OAuth
+              </Button>
+            </div>
           </div>
         </div>
       </header>

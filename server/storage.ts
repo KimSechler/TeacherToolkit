@@ -28,7 +28,7 @@ import {
   type InsertQuestionUsage,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, asc, gte } from "drizzle-orm";
+import { eq, and, desc, asc, gte, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // User operations (required for Replit Auth)
@@ -158,146 +158,134 @@ export class DatabaseStorage implements IStorage {
   // Class operations
   async getClassesByTeacher(teacherId: string): Promise<Class[]> {
     try {
-      const result = await db.select().from('classes').where({ teacherId });
-      return result || [];
+      // Try real database first
+      if (process.env.DATABASE_URL) {
+        const dbClasses = await db
+          .select()
+          .from(classes)
+          .where(eq(classes.teacherId, teacherId));
+        return dbClasses.sort((a: Class, b: Class) => {
+          const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+          const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+          return dateB - dateA;
+        });
+      }
     } catch (error) {
-      console.error("Error fetching classes:", error);
-      // Return in-memory classes for development
-      return DatabaseStorage.classes.filter(c => c.teacherId === teacherId);
+      console.error("Database error, falling back to mock data:", error);
     }
+    
+    // Fallback to mock data
+    const memoryClasses = DatabaseStorage.classes.filter(c => c.teacherId === teacherId);
+    return memoryClasses;
   }
 
   async getClass(id: number): Promise<Class | undefined> {
-    const [classRecord] = await db.select().from(classes).where(eq(classes.id, id));
-    return classRecord;
+    const found = DatabaseStorage.classes.find(c => c.id === id);
+    console.log("Get class by id:", id, found);
+    return found;
   }
 
   async createClass(classData: InsertClass): Promise<Class> {
-    try {
-      const [classRecord] = await db.insert(classes).values(classData).returning();
-      return classRecord;
-    } catch (error) {
-      console.error("Error creating class in database:", error);
-      // Fallback to in-memory storage for development
-      const newClass = {
-        id: DatabaseStorage.nextClassId++,
-        name: classData.name,
-        teacherId: classData.teacherId,
-        grade: classData.grade || null,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-      DatabaseStorage.classes.push(newClass);
-      return newClass;
-    }
+    const newClass = {
+      id: DatabaseStorage.nextClassId++,
+      name: classData.name,
+      teacherId: classData.teacherId,
+      grade: classData.grade || null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    DatabaseStorage.classes.push(newClass);
+    console.log("Created class in memory:", newClass);
+    return newClass;
   }
 
   async updateClass(id: number, classData: Partial<InsertClass>): Promise<Class> {
-    try {
-      const [classRecord] = await db
-        .update(classes)
-        .set({ ...classData, updatedAt: new Date() })
-        .where(eq(classes.id, id))
-        .returning();
-      return classRecord;
-    } catch (error) {
-      console.error("Error updating class in database:", error);
-      // Fallback to in-memory storage for development
-      const classIndex = DatabaseStorage.classes.findIndex(c => c.id === id);
-      if (classIndex !== -1) {
-        DatabaseStorage.classes[classIndex] = {
-          ...DatabaseStorage.classes[classIndex],
-          ...classData,
-          updatedAt: new Date()
-        };
-        return DatabaseStorage.classes[classIndex];
-      }
-      throw new Error("Class not found");
+    const classIndex = DatabaseStorage.classes.findIndex(c => c.id === id);
+    if (classIndex !== -1) {
+      DatabaseStorage.classes[classIndex] = {
+        ...DatabaseStorage.classes[classIndex],
+        ...classData,
+        updatedAt: new Date()
+      };
+      console.log("Updated class in memory:", DatabaseStorage.classes[classIndex]);
+      return DatabaseStorage.classes[classIndex];
     }
+    throw new Error("Class not found");
   }
 
   async deleteClass(id: number): Promise<void> {
-    try {
-      await db.delete(classes).where(eq(classes.id, id));
-    } catch (error) {
-      console.error("Error deleting class from database:", error);
-      // Fallback to in-memory storage for development
-      const classIndex = DatabaseStorage.classes.findIndex(c => c.id === id);
-      if (classIndex !== -1) {
-        DatabaseStorage.classes.splice(classIndex, 1);
-      }
+    const classIndex = DatabaseStorage.classes.findIndex(c => c.id === id);
+    if (classIndex !== -1) {
+      const deleted = DatabaseStorage.classes[classIndex];
+      DatabaseStorage.classes.splice(classIndex, 1);
+      // Also delete all students in this class
+      DatabaseStorage.students = DatabaseStorage.students.filter(s => s.classId !== id);
+      console.log("Deleted class in memory:", deleted);
     }
   }
 
   // Student operations
   async getStudentsByClass(classId: number): Promise<Student[]> {
     try {
-      const result = await db.select().from('students').where({ classId });
-      return result || [];
+      // Try real database first
+      if (process.env.DATABASE_URL) {
+        const dbStudents = await db
+          .select()
+          .from(students)
+          .where(eq(students.classId, classId));
+        return dbStudents.sort((a: Student, b: Student) => {
+          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return dateA - dateB; // Oldest first
+        });
+      }
     } catch (error) {
-      console.error("Error fetching students:", error);
-      // Return in-memory students for development
-      return DatabaseStorage.students.filter(s => s.classId === classId);
+      console.error("Database error, falling back to mock data:", error);
     }
+    
+    // Fallback to mock data
+    const classStudents = DatabaseStorage.students.filter(s => s.classId === classId);
+    return classStudents;
   }
 
   async getStudent(id: number): Promise<Student | undefined> {
-    const [student] = await db.select().from(students).where(eq(students.id, id));
-    return student;
+    const found = DatabaseStorage.students.find(s => s.id === id);
+    console.log("Get student by id:", id, found);
+    return found;
   }
 
   async createStudent(studentData: InsertStudent): Promise<Student> {
-    try {
-      const [studentRecord] = await db.insert(students).values(studentData).returning();
-      return studentRecord;
-    } catch (error) {
-      console.error("Error creating student in database:", error);
-      // Fallback to in-memory storage for development
-      const newStudent = {
-        id: DatabaseStorage.nextStudentId++,
-        name: studentData.name,
-        classId: studentData.classId,
-        avatarUrl: studentData.avatarUrl || null,
-        createdAt: new Date()
-      };
-      DatabaseStorage.students.push(newStudent);
-      return newStudent;
-    }
+    const newStudent = {
+      id: DatabaseStorage.nextStudentId++,
+      name: studentData.name,
+      classId: studentData.classId,
+      avatarUrl: studentData.avatarUrl || null,
+      createdAt: new Date()
+    };
+    DatabaseStorage.students.push(newStudent);
+    console.log("Created student in memory:", newStudent);
+    return newStudent;
   }
 
   async updateStudent(id: number, studentData: Partial<InsertStudent>): Promise<Student> {
-    try {
-      const [student] = await db
-        .update(students)
-        .set(studentData)
-        .where(eq(students.id, id))
-        .returning();
-      return student;
-    } catch (error) {
-      console.error("Error updating student in database:", error);
-      // Fallback to in-memory storage for development
-      const studentIndex = DatabaseStorage.students.findIndex(s => s.id === id);
-      if (studentIndex !== -1) {
-        DatabaseStorage.students[studentIndex] = {
-          ...DatabaseStorage.students[studentIndex],
-          ...studentData
-        };
-        return DatabaseStorage.students[studentIndex];
-      }
-      throw new Error("Student not found");
+    const studentIndex = DatabaseStorage.students.findIndex(s => s.id === id);
+    if (studentIndex !== -1) {
+      DatabaseStorage.students[studentIndex] = {
+        ...DatabaseStorage.students[studentIndex],
+        ...studentData
+      };
+      console.log("Updated student in memory:", DatabaseStorage.students[studentIndex]);
+      return DatabaseStorage.students[studentIndex];
     }
+    throw new Error("Student not found");
   }
 
   async deleteStudent(id: number): Promise<void> {
-    try {
-      await db.delete(students).where(eq(students.id, id));
-    } catch (error) {
-      console.error("Error deleting student from database:", error);
-      // Fallback to in-memory storage for development
-      const studentIndex = DatabaseStorage.students.findIndex(s => s.id === id);
-      if (studentIndex !== -1) {
-        DatabaseStorage.students.splice(studentIndex, 1);
-      }
+    const studentIndex = DatabaseStorage.students.findIndex(s => s.id === id);
+    if (studentIndex !== -1) {
+      const deleted = DatabaseStorage.students[studentIndex];
+      DatabaseStorage.students.splice(studentIndex, 1);
+      console.log("Deleted student in memory:", deleted);
     }
   }
 
@@ -617,6 +605,79 @@ export class DatabaseStorage implements IStorage {
       // Return empty array for mock database
       return [];
     }
+  }
+
+  // Batch operations for better performance
+  async batchGetStudentsByClasses(classIds: number[]): Promise<Record<number, Student[]>> {
+    try {
+      if (process.env.DATABASE_URL) {
+        const allStudents = await db
+          .select()
+          .from(students)
+          .where(inArray(students.classId, classIds));
+        
+        // Group students by classId
+        const groupedStudents: Record<number, Student[]> = {};
+        allStudents.forEach((student: Student) => {
+          if (!groupedStudents[student.classId]) {
+            groupedStudents[student.classId] = [];
+          }
+          groupedStudents[student.classId].push(student);
+        });
+        
+        return groupedStudents;
+      }
+    } catch (error) {
+      console.error("Database error in batch operation, falling back to individual queries:", error);
+    }
+    
+    // Fallback to individual queries
+    const result: Record<number, Student[]> = {};
+    for (const classId of classIds) {
+      result[classId] = await this.getStudentsByClass(classId);
+    }
+    return result;
+  }
+
+  async batchGetAttendanceByClassesAndDate(classIds: number[], date: Date): Promise<Record<number, AttendanceRecord[]>> {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    try {
+      if (process.env.DATABASE_URL) {
+        const allRecords = await db
+          .select()
+          .from(attendanceRecords)
+          .where(
+            and(
+              inArray(attendanceRecords.classId, classIds),
+              eq(attendanceRecords.date, startOfDay)
+            )
+          );
+        
+        // Group records by classId
+        const groupedRecords: Record<number, AttendanceRecord[]> = {};
+        allRecords.forEach((record: AttendanceRecord) => {
+          if (!groupedRecords[record.classId]) {
+            groupedRecords[record.classId] = [];
+          }
+          groupedRecords[record.classId].push(record);
+        });
+        
+        return groupedRecords;
+      }
+    } catch (error) {
+      console.error("Database error in batch attendance operation:", error);
+    }
+    
+    // Fallback to individual queries
+    const result: Record<number, AttendanceRecord[]> = {};
+    for (const classId of classIds) {
+      result[classId] = await this.getAttendanceByClassAndDate(classId, date);
+    }
+    return result;
   }
 }
 
