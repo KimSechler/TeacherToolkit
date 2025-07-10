@@ -91,6 +91,44 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // In-memory storage for development (persists during server session)
+  private static classes: Class[] = [
+    {
+      id: 1,
+      name: "Math 101",
+      teacherId: "1",
+      grade: "3rd Grade",
+      createdAt: new Date(),
+      updatedAt: new Date()
+    },
+    {
+      id: 2,
+      name: "Science Explorers",
+      teacherId: "1",
+      grade: "4th Grade",
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }
+  ];
+
+  private static students: Student[] = [
+    { id: 1, name: "Alice Johnson", classId: 1, createdAt: new Date(), avatarUrl: null },
+    { id: 2, name: "Bob Smith", classId: 1, createdAt: new Date(), avatarUrl: null },
+    { id: 3, name: "Charlie Brown", classId: 1, createdAt: new Date(), avatarUrl: null },
+    { id: 4, name: "Diana Prince", classId: 1, createdAt: new Date(), avatarUrl: null },
+    { id: 5, name: "Ethan Hunt", classId: 1, createdAt: new Date(), avatarUrl: null },
+    { id: 6, name: "Fiona Gallagher", classId: 1, createdAt: new Date(), avatarUrl: null },
+    { id: 7, name: "George Washington", classId: 1, createdAt: new Date(), avatarUrl: null },
+    { id: 8, name: "Hannah Montana", classId: 1, createdAt: new Date(), avatarUrl: null },
+    { id: 9, name: "Isabella Rodriguez", classId: 1, createdAt: new Date(), avatarUrl: null },
+    { id: 10, name: "Jack Thompson", classId: 1, createdAt: new Date(), avatarUrl: null },
+    { id: 11, name: "Katie Wilson", classId: 1, createdAt: new Date(), avatarUrl: null },
+    { id: 12, name: "Liam Davis", classId: 1, createdAt: new Date(), avatarUrl: null }
+  ];
+
+  private static nextClassId = 3;
+  private static nextStudentId = 13;
+
   // User operations (required for Replit Auth)
   async getUser(id: string): Promise<User | undefined> {
     // Return demo user for development
@@ -124,25 +162,8 @@ export class DatabaseStorage implements IStorage {
       return result || [];
     } catch (error) {
       console.error("Error fetching classes:", error);
-      // Return demo classes for development
-      return [
-        {
-          id: 1,
-          name: "Math 101",
-          teacherId: "1",
-          grade: "3rd Grade",
-          createdAt: new Date(),
-          updatedAt: new Date()
-        },
-        {
-          id: 2,
-          name: "Science Explorers",
-          teacherId: "1",
-          grade: "4th Grade",
-          createdAt: new Date(),
-          updatedAt: new Date()
-        }
-      ];
+      // Return in-memory classes for development
+      return DatabaseStorage.classes.filter(c => c.teacherId === teacherId);
     }
   }
 
@@ -152,29 +173,60 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createClass(classData: InsertClass): Promise<Class> {
-    // For mock database, create a new class with auto-increment ID
-    const newClass = {
-      id: Math.floor(Math.random() * 1000) + 3, // Random ID starting from 3
-      name: classData.name,
-      teacherId: classData.teacherId,
-      grade: classData.grade || null,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-    return newClass;
+    try {
+      const [classRecord] = await db.insert(classes).values(classData).returning();
+      return classRecord;
+    } catch (error) {
+      console.error("Error creating class in database:", error);
+      // Fallback to in-memory storage for development
+      const newClass = {
+        id: DatabaseStorage.nextClassId++,
+        name: classData.name,
+        teacherId: classData.teacherId,
+        grade: classData.grade || null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      DatabaseStorage.classes.push(newClass);
+      return newClass;
+    }
   }
 
   async updateClass(id: number, classData: Partial<InsertClass>): Promise<Class> {
-    const [classRecord] = await db
-      .update(classes)
-      .set({ ...classData, updatedAt: new Date() })
-      .where(eq(classes.id, id))
-      .returning();
-    return classRecord;
+    try {
+      const [classRecord] = await db
+        .update(classes)
+        .set({ ...classData, updatedAt: new Date() })
+        .where(eq(classes.id, id))
+        .returning();
+      return classRecord;
+    } catch (error) {
+      console.error("Error updating class in database:", error);
+      // Fallback to in-memory storage for development
+      const classIndex = DatabaseStorage.classes.findIndex(c => c.id === id);
+      if (classIndex !== -1) {
+        DatabaseStorage.classes[classIndex] = {
+          ...DatabaseStorage.classes[classIndex],
+          ...classData,
+          updatedAt: new Date()
+        };
+        return DatabaseStorage.classes[classIndex];
+      }
+      throw new Error("Class not found");
+    }
   }
 
   async deleteClass(id: number): Promise<void> {
-    await db.delete(classes).where(eq(classes.id, id));
+    try {
+      await db.delete(classes).where(eq(classes.id, id));
+    } catch (error) {
+      console.error("Error deleting class from database:", error);
+      // Fallback to in-memory storage for development
+      const classIndex = DatabaseStorage.classes.findIndex(c => c.id === id);
+      if (classIndex !== -1) {
+        DatabaseStorage.classes.splice(classIndex, 1);
+      }
+    }
   }
 
   // Student operations
@@ -184,21 +236,8 @@ export class DatabaseStorage implements IStorage {
       return result || [];
     } catch (error) {
       console.error("Error fetching students:", error);
-      // Return demo students for development
-      return [
-        { id: 1, name: "Alice Johnson", classId: 1, createdAt: new Date(), avatarUrl: null },
-        { id: 2, name: "Bob Smith", classId: 1, createdAt: new Date(), avatarUrl: null },
-        { id: 3, name: "Charlie Brown", classId: 1, createdAt: new Date(), avatarUrl: null },
-        { id: 4, name: "Diana Prince", classId: 1, createdAt: new Date(), avatarUrl: null },
-        { id: 5, name: "Ethan Hunt", classId: 1, createdAt: new Date(), avatarUrl: null },
-        { id: 6, name: "Fiona Gallagher", classId: 1, createdAt: new Date(), avatarUrl: null },
-        { id: 7, name: "George Washington", classId: 1, createdAt: new Date(), avatarUrl: null },
-        { id: 8, name: "Hannah Montana", classId: 1, createdAt: new Date(), avatarUrl: null },
-        { id: 9, name: "Isabella Rodriguez", classId: 1, createdAt: new Date(), avatarUrl: null },
-        { id: 10, name: "Jack Thompson", classId: 1, createdAt: new Date(), avatarUrl: null },
-        { id: 11, name: "Katie Wilson", classId: 1, createdAt: new Date(), avatarUrl: null },
-        { id: 12, name: "Liam Davis", classId: 1, createdAt: new Date(), avatarUrl: null }
-      ];
+      // Return in-memory students for development
+      return DatabaseStorage.students.filter(s => s.classId === classId);
     }
   }
 
@@ -208,28 +247,58 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createStudent(studentData: InsertStudent): Promise<Student> {
-    // For mock database, create a new student with auto-increment ID
-    const newStudent = {
-      id: Math.floor(Math.random() * 1000) + 9, // Random ID starting from 9
-      name: studentData.name,
-      classId: studentData.classId,
-      avatarUrl: studentData.avatarUrl || null,
-      createdAt: new Date()
-    };
-    return newStudent;
+    try {
+      const [studentRecord] = await db.insert(students).values(studentData).returning();
+      return studentRecord;
+    } catch (error) {
+      console.error("Error creating student in database:", error);
+      // Fallback to in-memory storage for development
+      const newStudent = {
+        id: DatabaseStorage.nextStudentId++,
+        name: studentData.name,
+        classId: studentData.classId,
+        avatarUrl: studentData.avatarUrl || null,
+        createdAt: new Date()
+      };
+      DatabaseStorage.students.push(newStudent);
+      return newStudent;
+    }
   }
 
   async updateStudent(id: number, studentData: Partial<InsertStudent>): Promise<Student> {
-    const [student] = await db
-      .update(students)
-      .set(studentData)
-      .where(eq(students.id, id))
-      .returning();
-    return student;
+    try {
+      const [student] = await db
+        .update(students)
+        .set(studentData)
+        .where(eq(students.id, id))
+        .returning();
+      return student;
+    } catch (error) {
+      console.error("Error updating student in database:", error);
+      // Fallback to in-memory storage for development
+      const studentIndex = DatabaseStorage.students.findIndex(s => s.id === id);
+      if (studentIndex !== -1) {
+        DatabaseStorage.students[studentIndex] = {
+          ...DatabaseStorage.students[studentIndex],
+          ...studentData
+        };
+        return DatabaseStorage.students[studentIndex];
+      }
+      throw new Error("Student not found");
+    }
   }
 
   async deleteStudent(id: number): Promise<void> {
-    await db.delete(students).where(eq(students.id, id));
+    try {
+      await db.delete(students).where(eq(students.id, id));
+    } catch (error) {
+      console.error("Error deleting student from database:", error);
+      // Fallback to in-memory storage for development
+      const studentIndex = DatabaseStorage.students.findIndex(s => s.id === id);
+      if (studentIndex !== -1) {
+        DatabaseStorage.students.splice(studentIndex, 1);
+      }
+    }
   }
 
   // Question operations
