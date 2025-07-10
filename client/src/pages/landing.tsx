@@ -73,7 +73,7 @@ export default function Landing() {
               <span className="font-bold text-xl text-gray-800">TeacherTools</span>
             </div>
             <Button 
-              onClick={() => window.location.href = '/api/login'}
+              onClick={() => window.location.href = '/login'}
               className="bg-primary hover:bg-primary/90"
             >
               Get Started
@@ -96,7 +96,7 @@ export default function Landing() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button 
               size="lg" 
-              onClick={() => window.location.href = '/api/login'}
+              onClick={() => window.location.href = '/login'}
               className="bg-primary hover:bg-primary/90 text-lg px-8 py-3"
             >
               <Play className="w-5 h-5 mr-2" />
@@ -175,7 +175,7 @@ export default function Landing() {
               </p>
               <Button 
                 size="lg" 
-                onClick={() => window.location.href = '/api/login'}
+                onClick={() => window.location.href = '/login'}
                 className="bg-white text-purple-600 hover:bg-gray-100 w-full"
               >
                 Sign Up Free

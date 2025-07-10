@@ -5,22 +5,53 @@ import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import Navigation from "@/components/navigation";
 import Sidebar from "@/components/sidebar";
-import AttendanceTracker from "@/components/attendance-tracker";
+import AttendancePreview from "@/components/attendance-preview";
+import QuestionOfDayComponent from "@/components/question-of-day";
+import QuestionLibraryModal from "@/components/question-library-modal";
+import SettingsModal, { AttendanceSettings } from "@/components/settings-modal";
+import ResultsModal, { AttendanceResults } from "@/components/results-modal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
-import { CalendarIcon, Users, TrendingUp, Download } from "lucide-react";
+import { CalendarIcon, Users, TrendingUp, Download, Plus, BookOpen, Settings, PieChart } from "lucide-react";
 import { format } from "date-fns";
+import { getAllThemes, AttendanceTheme } from "@/lib/attendanceThemes";
+import { QuestionOfDay, getRandomQuestion } from "@/lib/questionLibrary";
 
 export default function Attendance() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading } = useAuth();
-  const [selectedClass, setSelectedClass] = useState<number | null>(null);
+  
+  // Get last selected class from localStorage or default to null
+  const getLastSelectedClass = (): number | null => {
+    if (typeof window !== 'undefined') {
+      const lastClass = localStorage.getItem('lastSelectedClass');
+      return lastClass ? parseInt(lastClass) : null;
+    }
+    return null;
+  };
+  
+  const [selectedClass, setSelectedClass] = useState<number | null>(getLastSelectedClass());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
+  const [currentQuestion, setCurrentQuestion] = useState<QuestionOfDay | null>(null);
+  const [showQuestionSelector, setShowQuestionSelector] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showResultsModal, setShowResultsModal] = useState(false);
+  const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings>({
+    soundEnabled: true,
+    confettiEnabled: true,
+    animationsEnabled: true,
+    visualEffectsEnabled: true,
+    autoSaveEnabled: true,
+    showProgressBar: true,
+    starfieldEnabled: true,
+    nebulaEffectsEnabled: true,
+    cosmicParticlesEnabled: true,
+  });
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -37,25 +68,41 @@ export default function Attendance() {
     }
   }, [isAuthenticated, isLoading, toast]);
 
-  const { data: classes, isLoading: classesLoading } = useQuery({
+  type Class = { id: number; name: string; grade?: string };
+  type AttendanceStats = { totalStudents: number; presentToday: number; attendanceRate: number; responses: number };
+
+  const { data: classes = [], isLoading: classesLoading } = useQuery<Class[]>({
     queryKey: ["/api/classes"],
     retry: false,
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
-      }
-    },
   });
 
-  const { data: attendanceStats } = useQuery({
+  // Set default class if none selected and classes are available
+  useEffect(() => {
+    if (classes.length > 0 && selectedClass === null) {
+      const lastClass = getLastSelectedClass();
+      console.log('Setting default class:', { lastClass, availableClasses: classes.map(c => c.id) });
+      
+      if (lastClass && classes.some(cls => cls.id === lastClass)) {
+        // Last class still exists, use it
+        console.log('Using last selected class:', lastClass);
+        handleClassChange(lastClass);
+      } else {
+        // Last class doesn't exist or no last class, use first available
+        console.log('Using first available class:', classes[0].id);
+        handleClassChange(classes[0].id);
+      }
+    }
+  }, [classes, selectedClass]);
+
+  // Validate selected class still exists
+  useEffect(() => {
+    if (selectedClass && classes.length > 0 && !classes.some(cls => cls.id === selectedClass)) {
+      console.log('Selected class no longer exists, switching to first available');
+      handleClassChange(classes[0].id);
+    }
+  }, [classes, selectedClass]);
+
+  const { data: attendanceStats = { totalStudents: 0, presentToday: 0, attendanceRate: 0, responses: 0 } } = useQuery<AttendanceStats>({
     queryKey: ["/api/classes", selectedClass, "attendance", "stats"],
     enabled: !!selectedClass,
   });
@@ -71,6 +118,54 @@ export default function Attendance() {
     );
   }
 
+  const themes = getAllThemes();
+
+  // Initialize with a random question if none selected
+  useEffect(() => {
+    if (!currentQuestion) {
+      setCurrentQuestion(getRandomQuestion());
+    }
+  }, [currentQuestion]);
+
+  // Update attendance tracker when question changes
+  useEffect(() => {
+    if (currentQuestion) {
+      // Force re-render of attendance tracker components
+      // This ensures the new question is displayed
+      const event = new CustomEvent('questionUpdated', { 
+        detail: { question: currentQuestion } 
+      });
+      window.dispatchEvent(event);
+    }
+  }, [currentQuestion]);
+
+  const handleShuffleQuestion = () => {
+    setCurrentQuestion(getRandomQuestion());
+  };
+
+  const handlePickFromLibrary = () => {
+    setShowQuestionSelector(true);
+  };
+
+  const handleSelectQuestionFromLibrary = (question: QuestionOfDay) => {
+    setCurrentQuestion(question);
+    setShowQuestionSelector(false);
+    toast({
+      title: "Question Selected!",
+      description: `"${question.text}" has been set as today's question.`,
+    });
+  };
+
+  const handleCreateCustom = () => {
+    setShowQuestionSelector(true);
+  };
+
+  // Save selected class to localStorage whenever it changes
+  const handleClassChange = (classId: number) => {
+    setSelectedClass(classId);
+    localStorage.setItem('lastSelectedClass', classId.toString());
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation />
@@ -79,7 +174,7 @@ export default function Attendance() {
         <main className="flex-1 p-6">
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-800 mb-2">Attendance Tracker</h1>
-            <p className="text-gray-600">Track daily attendance with interactive Question of the Day</p>
+            <p className="text-gray-600">Track daily attendance with interactive themed Question of the Day</p>
           </div>
 
           {/* Controls */}
@@ -91,7 +186,7 @@ export default function Attendance() {
               <CardContent>
                 <Select 
                   value={selectedClass?.toString() || ""} 
-                  onValueChange={(value) => setSelectedClass(parseInt(value))}
+                  onValueChange={(value) => handleClassChange(parseInt(value))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Choose a class" />
@@ -142,13 +237,23 @@ export default function Attendance() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  <Button variant="outline" size="sm" className="w-full justify-start">
-                    <Download className="w-4 h-4 mr-2" />
-                    Export Report
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full justify-start"
+                    onClick={() => setShowSettingsModal(true)}
+                  >
+                    <Settings className="w-4 h-4 mr-2" />
+                    Settings
                   </Button>
-                  <Button variant="outline" size="sm" className="w-full justify-start">
-                    <TrendingUp className="w-4 h-4 mr-2" />
-                    View Analytics
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full justify-start"
+                    onClick={() => setShowResultsModal(true)}
+                  >
+                    <PieChart className="w-4 h-4 mr-2" />
+                    View Results
                   </Button>
                 </div>
               </CardContent>
@@ -224,25 +329,126 @@ export default function Attendance() {
             </div>
           )}
 
-          {/* Attendance Tracker */}
+          {/* Question of the Day Section */}
+          {selectedClass && (
+            <div className="mb-6">
+              <QuestionOfDayComponent
+                currentQuestion={currentQuestion}
+                onShuffle={handleShuffleQuestion}
+                onPickFromLibrary={handlePickFromLibrary}
+                onCreateCustom={handleCreateCustom}
+                classId={selectedClass}
+                onQuickStart={(themeId) => {
+                  const questionId = currentQuestion?.id || 'random';
+                  window.location.href = `/attendance-tracker/${selectedClass}/${themeId}?questionId=${questionId}`;
+                }}
+              />
+            </div>
+          )}
+
+          {/* Theme Previews */}
           {selectedClass ? (
-            <AttendanceTracker classId={selectedClass} date={selectedDate} />
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-gray-800">Available Themes</h2>
+                <p className="text-sm text-gray-600">Click any theme to open the full-screen tracker</p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {themes.map((theme) => {
+                  const selectedClassData = classes.find((cls: Class) => cls.id === selectedClass);
+                  return (
+                    <AttendancePreview
+                      key={theme.id}
+                      classId={selectedClass}
+                      className={selectedClassData?.name || "Unknown Class"}
+                      theme={theme}
+                      studentCount={attendanceStats.totalStudents || 0}
+                      date={selectedDate}
+                      currentQuestion={currentQuestion}
+                      onThemeChange={() => {}} // Removed onThemeChange prop
+                    />
+                  );
+                })}
+              </div>
+            </div>
           ) : (
             <Card>
               <CardContent className="p-12 text-center">
                 <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-800 mb-2">Select a Class</h3>
                 <p className="text-gray-600 mb-4">
-                  Choose a class from the dropdown above to start tracking attendance
+                  Choose a class from the dropdown above to start tracking attendance with themed trackers
                 </p>
                 {classesLoading ? (
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
                 ) : classes && classes.length === 0 ? (
-                  <Button variant="outline">Create Your First Class</Button>
+                  <Button variant="outline">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Your First Class
+                  </Button>
                 ) : null}
               </CardContent>
             </Card>
           )}
+
+          {/* Question Library Modal */}
+          <QuestionLibraryModal
+            isOpen={showQuestionSelector}
+            onClose={() => setShowQuestionSelector(false)}
+            onSelectQuestion={handleSelectQuestionFromLibrary}
+          />
+
+          {/* Settings Modal */}
+          <SettingsModal
+            isOpen={showSettingsModal}
+            onClose={() => setShowSettingsModal(false)}
+            settings={attendanceSettings}
+            onSettingsChange={setAttendanceSettings}
+            currentTheme={themes[0]}
+            currentQuestion={currentQuestion}
+          />
+
+          {/* Results Modal */}
+          <ResultsModal
+            isOpen={showResultsModal}
+            onClose={() => setShowResultsModal(false)}
+            attendanceData={{
+              classId: selectedClass || 0,
+              className: classes.find(c => c.id === selectedClass)?.name || "Unknown Class",
+              date: selectedDate.toISOString(),
+              question: currentQuestion?.text || "No question selected",
+              answers: [
+                { answer: "Yes", count: 15, percentage: 60, students: ["Emma J.", "Jake S.", "Sarah W."], color: "#3B82F6" },
+                { answer: "No", count: 10, percentage: 40, students: ["Michael B.", "Lisa D."], color: "#EF4444" }
+              ],
+              totalStudents: 25,
+              respondedStudents: 25,
+              attendanceRate: 100,
+              sessionDuration: 15,
+              teacherName: "Mrs. Johnson",
+              allStudents: [
+                "Emma J.",
+                "Jake S.", 
+                "Sarah W.",
+                "Michael B.",
+                "Lisa D."
+              ],
+              checkInTimes: {
+                "Emma J.": "9:15 AM",
+                "Jake S.": "9:16 AM",
+                "Sarah W.": "9:17 AM",
+                "Michael B.": "9:18 AM",
+                "Lisa D.": "9:19 AM"
+              },
+              metadata: {
+                themeUsed: "Puppy Theme",
+                settingsUsed: attendanceSettings,
+                startTime: "9:15 AM",
+                endTime: "9:30 AM"
+              }
+            }}
+          />
         </main>
       </div>
     </div>

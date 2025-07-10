@@ -53,34 +53,27 @@ export default function Reports() {
     }
   }, [isAuthenticated, isLoading, toast]);
 
-  const { data: classes, isLoading: classesLoading } = useQuery({
+  type Class = { id: number; name: string; grade?: string };
+  type Stats = { totalStudents: number; attendanceRate: number };
+  type Game = { id: number; title: string };
+  type Question = { id: number; text: string };
+
+  const { data: classes = [], isLoading: classesLoading } = useQuery<Class[]>({
     queryKey: ["/api/classes"],
     retry: false,
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-      }
-    },
   });
 
-  const { data: dashboardStats } = useQuery({
+  const { data: dashboardStats = { totalStudents: 0, attendanceRate: 0 } } = useQuery<Stats>({
     queryKey: ["/api/dashboard/stats"],
     retry: false,
   });
 
-  const { data: games } = useQuery({
+  const { data: games = [] } = useQuery<Game[]>({
     queryKey: ["/api/games"],
     retry: false,
   });
 
-  const { data: questions } = useQuery({
+  const { data: questions = [] } = useQuery<Question[]>({
     queryKey: ["/api/questions"],
     retry: false,
   });

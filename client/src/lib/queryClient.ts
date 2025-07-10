@@ -8,14 +8,32 @@ async function throwIfResNotOk(res: Response) {
 }
 
 export async function apiRequest(
-  method: string,
-  url: string,
+  methodOrUrl: string,
+  urlOrOptions?: string | { method: string; body: string },
   data?: unknown | undefined,
 ): Promise<Response> {
+  let method: string;
+  let url: string;
+  let body: string | undefined;
+
+  if (typeof urlOrOptions === 'string') {
+    // First overload: apiRequest(method, url, data?)
+    method = methodOrUrl;
+    url = urlOrOptions;
+    body = data ? JSON.stringify(data) : undefined;
+  } else if (urlOrOptions && typeof urlOrOptions === 'object') {
+    // Second overload: apiRequest(url, { method, body })
+    method = urlOrOptions.method;
+    url = methodOrUrl;
+    body = urlOrOptions.body;
+  } else {
+    throw new Error('Invalid arguments to apiRequest');
+  }
+
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
-    body: data ? JSON.stringify(data) : undefined,
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body,
     credentials: "include",
   });
 

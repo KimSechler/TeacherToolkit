@@ -82,24 +82,15 @@ export default function Classes() {
     }
   }, [isAuthenticated, isLoading, toast]);
 
-  const { data: classes, isLoading: classesLoading } = useQuery({
+  type Class = { id: number; name: string; grade?: string };
+  type Student = { id: number; name: string; avatarUrl?: string };
+
+  const { data: classes = [], isLoading: classesLoading } = useQuery<Class[]>({
     queryKey: ["/api/classes"],
     retry: false,
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-      }
-    },
   });
 
-  const { data: students, isLoading: studentsLoading } = useQuery({
+  const { data: students = [], isLoading: studentsLoading } = useQuery<Student[]>({
     queryKey: ["/api/classes", selectedClass?.id, "students"],
     enabled: !!selectedClass,
   });
@@ -144,7 +135,7 @@ export default function Classes() {
     mutationFn: async (id: number) => {
       return await apiRequest("DELETE", `/api/classes/${id}`);
     },
-    onSuccess: () => {
+    onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ["/api/classes"] });
       toast({
         title: "Success",

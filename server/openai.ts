@@ -7,6 +7,32 @@ const openai = new OpenAI({
 
 export async function generateQuestions(topic: string, grade: string, count: number = 5) {
   try {
+    // Check if we have a valid API key
+    if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === "default_key") {
+      // Return mock data for development
+      console.log("🔧 Using mock AI responses for development");
+      return [
+        {
+          text: `What is the main topic we learned about ${topic}?`,
+          options: ["Option A", "Option B", "Option C", "Option D"],
+          correctAnswer: "Option A",
+          explanation: "This is the correct answer because it directly relates to the topic."
+        },
+        {
+          text: `Which of the following best describes ${topic}?`,
+          options: ["Choice 1", "Choice 2", "Choice 3", "Choice 4"],
+          correctAnswer: "Choice 2",
+          explanation: "This choice accurately represents the concept."
+        },
+        {
+          text: `How would you explain ${topic} to a ${grade} student?`,
+          options: ["Method A", "Method B", "Method C", "Method D"],
+          correctAnswer: "Method B",
+          explanation: "This method is most appropriate for the grade level."
+        }
+      ].slice(0, count);
+    }
+
     const prompt = `Generate ${count} educational questions about ${topic} appropriate for ${grade} students. 
     Return the response in JSON format with the following structure:
     {
@@ -150,15 +176,32 @@ export async function generateImageForTheme(themeName: string, description: stri
       quality: "standard",
     });
 
-    return { url: response.data[0].url };
+    return { url: response.data?.[0]?.url || '' };
   } catch (error) {
     console.error("Error generating image:", error);
     throw new Error("Failed to generate image");
   }
 }
 
-export async function chatWithAI(messages: Array<{ role: string; content: string }>) {
+export async function chatWithAI(messages: Array<{ role: "system" | "user" | "assistant"; content: string }>) {
   try {
+    // Check if we have a valid API key
+    if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === "default_key") {
+      // Return mock response for development
+      console.log("🔧 Using mock AI chat for development");
+      const lastMessage = messages[messages.length - 1]?.content || "";
+      
+      if (lastMessage.toLowerCase().includes("question")) {
+        return "I'd be happy to help you create some questions! Try using the Question Bank feature to generate educational questions for your students.";
+      } else if (lastMessage.toLowerCase().includes("game")) {
+        return "Creating educational games is a great way to engage students! Check out the Game Creator to build interactive learning experiences.";
+      } else if (lastMessage.toLowerCase().includes("attendance")) {
+        return "Attendance tracking is important for student engagement. Use the Attendance Tracker to monitor participation and ask daily questions.";
+      } else {
+        return "I'm here to help with your teaching needs! I can assist with creating questions, games, tracking attendance, and managing your classroom. What would you like to work on today?";
+      }
+    }
+
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
