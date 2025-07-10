@@ -8,7 +8,10 @@ import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
 
-if (!process.env.REPLIT_DOMAINS) {
+// Check if we're in development mode without Replit Auth
+const isDevelopmentMode = !process.env.REPLIT_DOMAINS && process.env.NODE_ENV === "development";
+
+if (!isDevelopmentMode && !process.env.REPLIT_DOMAINS) {
   throw new Error("Environment variable REPLIT_DOMAINS not provided");
 }
 
@@ -24,6 +27,21 @@ const getOidcConfig = memoize(
 
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
+  
+  if (isDevelopmentMode) {
+    // Use memory store for development
+    return session({
+      secret: process.env.SESSION_SECRET || "dev-secret-key",
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        httpOnly: true,
+        secure: false, // Allow HTTP in development
+        maxAge: sessionTtl,
+      },
+    });
+  }
+  
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
@@ -71,6 +89,55 @@ export async function setupAuth(app: Express) {
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());
+
+  if (isDevelopmentMode) {
+    console.log("🔧 Development mode: Using mock authentication");
+    
+    // Create a mock user for development
+    const mockUser = {
+      id: "dev-user-123",
+      email: "teacher@example.com",
+      firstName: "Demo",
+      lastName: "Teacher",
+      profileImageUrl: "",
+      claims: { sub: "dev-user-123", email: "teacher@example.com", first_name: "Demo", last_name: "Teacher" },
+      access_token: "mock-token",
+      refresh_token: "mock-refresh",
+      expires_at: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
+    };
+
+    // Mock authentication endpoints
+    app.get("/api/login", (req, res) => {
+      // Simulate login by setting user in session
+      req.login(mockUser, (err) => {
+        if (err) {
+          return res.status(500).json({ message: "Login failed" });
+        }
+        res.redirect("/");
+      });
+    });
+
+    app.get("/api/callback", (req, res) => {
+      res.redirect("/");
+    });
+
+    app.get("/api/logout", (req, res) => {
+      req.logout(() => {
+        res.redirect("/");
+      });
+    });
+
+    // Mock user endpoint
+    app.get("/api/auth/user", (req, res) => {
+      if (req.isAuthenticated()) {
+        res.json(mockUser);
+      } else {
+        res.status(401).json({ message: "Not authenticated" });
+      }
+    });
+
+    return;
+  }
 
   const config = await getOidcConfig();
 
@@ -128,6 +195,14 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  if (isDevelopmentMode) {
+    // In development mode, always allow access if user is in session
+    if (req.isAuthenticated()) {
+      return next();
+    }
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
   const user = req.user as any;
 
   if (!req.isAuthenticated() || !user.expires_at) {

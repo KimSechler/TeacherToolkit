@@ -8,17 +8,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { QuestionOfDay, getRandomQuestion } from "@/lib/questionLibrary";
+import { ArrowLeft, Settings, Download, RotateCcw, BookOpen, Shuffle, PieChart } from "lucide-react";
+import QuestionLibraryModal from './question-library-modal';
+import ResultsModal, { AttendanceResults } from './results-modal';
+
+interface Student {
+  id: number;
+  name: string;
+  classId: number;
+  createdAt: Date;
+  avatarUrl?: string | null;
+}
 
 interface AttendanceTrackerProps {
   classId: number;
   date?: Date;
-}
-
-interface Student {
-  id: number;
-  firstName: string;
-  lastName: string;
-  classId: number;
+  question?: QuestionOfDay | null;
 }
 
 const puppyStyles = {
@@ -30,20 +36,30 @@ const puppyStyles = {
 const answerColors = ['green', 'red', 'blue', 'yellow', 'purple', 'pink', 'indigo', 'orange'];
 const answerEmojis = ['✅', '❌', '🔵', '🟡', '🟣', '🩷', '🟦', '🟠'];
 
-export default function AttendanceTracker({ classId, date = new Date() }: AttendanceTrackerProps) {
+export default function AttendanceTracker({ classId, date = new Date(), question = null }: AttendanceTrackerProps) {
   const [selectedDate, setSelectedDate] = useState(date.toISOString().split('T')[0]);
-  const [questionOfDay, setQuestionOfDay] = useState("Do you like pizza?");
-  const [answerOptions, setAnswerOptions] = useState("Yes\nNo");
+  const [questionOfDay, setQuestionOfDay] = useState(question?.text || "Do you like pizza?");
+  const [answerOptions, setAnswerOptions] = useState(question?.answers.join('\n') || "Yes\nNo");
   const [puppyStyle, setPuppyStyle] = useState<keyof typeof puppyStyles>('classic');
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
   const [attendanceData, setAttendanceData] = useState<Record<string, string>>({});
   const [draggedStudent, setDraggedStudent] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showQuestionLibraryModal, setShowQuestionLibraryModal] = useState(false);
+  const [showResultsModal, setShowResultsModal] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Update question state when prop changes
+  useEffect(() => {
+    if (question) {
+      setQuestionOfDay(question.text);
+      setAnswerOptions(question.answers.join('\n'));
+    }
+  }, [question]);
+
   // Fetch students for the class
-  const { data: students = [], isLoading: studentsLoading } = useQuery({
+  const { data: students = [] as Student[], isLoading: studentsLoading } = useQuery<Student[]>({
     queryKey: ['/api/students', classId],
     enabled: !!classId,
   });
@@ -51,15 +67,12 @@ export default function AttendanceTracker({ classId, date = new Date() }: Attend
   // Create or update attendance record
   const attendanceMutation = useMutation({
     mutationFn: async ({ studentId, status, notes }: { studentId: number; status: string; notes?: string }) => {
-      return apiRequest(`/api/attendance`, {
-        method: 'POST',
-        body: JSON.stringify({
-          studentId,
-          classId,
-          date: selectedDate,
-          status,
-          notes,
-        }),
+      return apiRequest('POST', `/api/attendance`, {
+        studentId,
+        classId,
+        date: selectedDate,
+        status,
+        notes,
       });
     },
     onSuccess: () => {
@@ -81,7 +94,7 @@ export default function AttendanceTracker({ classId, date = new Date() }: Attend
   const answers = answerOptions.split('\n').filter(a => a.trim());
 
   const getPuppyEmoji = (studentName: string) => {
-    const studentIndex = students.findIndex((s: Student) => `${s.firstName} ${s.lastName}` === studentName);
+    const studentIndex = students.findIndex((s: Student) => s.name === studentName);
     return puppyStyles[puppyStyle][studentIndex % puppyStyles[puppyStyle].length];
   };
 
@@ -89,11 +102,11 @@ export default function AttendanceTracker({ classId, date = new Date() }: Attend
     e.dataTransfer.setData("text/plain", studentName);
     setDraggedStudent(studentName);
     setSelectedStudent(null);
-    e.currentTarget.style.opacity = '0.5';
+    (e.currentTarget as HTMLElement).style.opacity = '0.5';
   };
 
   const handleDragEnd = (e: React.DragEvent) => {
-    e.currentTarget.style.opacity = '1';
+    (e.currentTarget as HTMLElement).style.opacity = '1';
     setDraggedStudent(null);
   };
 
@@ -130,7 +143,7 @@ export default function AttendanceTracker({ classId, date = new Date() }: Attend
     setAttendanceData(prev => ({ ...prev, [studentName]: answer }));
     
     // Update in database
-    const student = students.find((s: Student) => `${s.firstName} ${s.lastName}` === studentName);
+    const student = students.find((s: Student) => s.name === studentName);
     if (student) {
       attendanceMutation.mutate({ 
         studentId: student.id, 
@@ -148,7 +161,7 @@ export default function AttendanceTracker({ classId, date = new Date() }: Attend
     });
     
     // Update in database
-    const student = students.find((s: Student) => `${s.firstName} ${s.lastName}` === studentName);
+    const student = students.find((s: Student) => s.name === studentName);
     if (student) {
       attendanceMutation.mutate({ 
         studentId: student.id, 
@@ -211,7 +224,7 @@ export default function AttendanceTracker({ classId, date = new Date() }: Attend
     });
     
     // Students who haven't responded
-    const allStudentNames = students.map((s: Student) => `${s.firstName} ${s.lastName}`);
+    const allStudentNames = students.map((s: Student) => s.name);
     const respondedStudents = Object.keys(attendanceData);
     const notResponded = allStudentNames.filter(name => !respondedStudents.includes(name));
     if (notResponded.length > 0) {
@@ -233,6 +246,20 @@ export default function AttendanceTracker({ classId, date = new Date() }: Attend
     window.URL.revokeObjectURL(url);
   };
 
+  const goBack = () => {
+    window.history.back();
+  };
+
+  const handleShuffleQuestion = () => {
+    const newQuestion = getRandomQuestion();
+    setQuestionOfDay(newQuestion.text);
+    setAnswerOptions(newQuestion.answers.join('\n'));
+    toast({
+      title: "Question Shuffled! 🎲",
+      description: `"${newQuestion.text}" is now the active question.`,
+    });
+  };
+
   if (studentsLoading) {
     return <div className="p-6">Loading students...</div>;
   }
@@ -244,11 +271,19 @@ export default function AttendanceTracker({ classId, date = new Date() }: Attend
         <div className="flex justify-between items-center max-w-7xl mx-auto">
           <h1 className="text-3xl font-bold text-purple-700">🐶 Puppy Attendance Tracker</h1>
           <div className="flex gap-3">
+            <Button onClick={handleShuffleQuestion} variant="outline" className="bg-purple-100 hover:bg-purple-200 text-purple-700 border-purple-300" title="Shuffle Question">
+              <Shuffle className="w-4 h-4" />
+            </Button>
+            <Button onClick={() => setShowQuestionLibraryModal(true)} variant="outline" className="bg-purple-100 hover:bg-purple-200 text-purple-700 border-purple-300">
+              <BookOpen className="w-4 h-4 mr-2" />
+              Change Question
+            </Button>
             <Button onClick={() => setShowSettings(!showSettings)} className="bg-purple-600 hover:bg-purple-700">
               ⚙️ Settings
             </Button>
-            <Button onClick={downloadReport} className="bg-green-600 hover:bg-green-700">
-              📊 Download Report
+            <Button onClick={() => setShowResultsModal(true)} className="bg-green-600 hover:bg-green-700 text-white">
+              <PieChart className="w-4 h-4 mr-2" />
+              View Results
             </Button>
           </div>
         </div>
@@ -333,9 +368,9 @@ export default function AttendanceTracker({ classId, date = new Date() }: Attend
             <h3 className="text-2xl font-bold text-blue-800 mb-6">👥 Students - Drag Your Puppy to Answer!</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
               {students
-                .filter((student: Student) => !attendanceData[`${student.firstName} ${student.lastName}`])
+                .filter((student: Student) => !attendanceData[student.name])
                 .map((student: Student) => {
-                  const studentName = `${student.firstName} ${student.lastName}`;
+                  const studentName = student.name;
                   const isSelected = selectedStudent === studentName;
                   
                   return (
@@ -426,6 +461,55 @@ export default function AttendanceTracker({ classId, date = new Date() }: Attend
           </Card>
         )}
       </div>
+
+      {/* Question Library Modal */}
+      <QuestionLibraryModal
+        isOpen={showQuestionLibraryModal}
+        onClose={() => setShowQuestionLibraryModal(false)}
+        onSelectQuestion={(newQuestion) => {
+          setQuestionOfDay(newQuestion.text);
+          setAnswerOptions(newQuestion.answers.join('\n'));
+          setShowQuestionLibraryModal(false);
+          toast({
+            title: "Question Changed! ✨",
+            description: `"${newQuestion.text}" is now the active question.`,
+          });
+        }}
+      />
+
+      {/* Results Modal */}
+      <ResultsModal
+        isOpen={showResultsModal}
+        onClose={() => setShowResultsModal(false)}
+        attendanceData={{
+          classId: classId,
+          className: "Puppy Class",
+          date: selectedDate,
+          question: questionOfDay,
+          answers: answers.map(answer => ({
+            answer: answer.trim(),
+            count: Object.values(attendanceData).filter(a => a === answer.trim()).length,
+            percentage: 0,
+            students: Object.entries(attendanceData)
+              .filter(([_, ans]) => ans === answer.trim())
+              .map(([name, _]) => name),
+            color: "#3B82F6"
+          })),
+          totalStudents: students.length,
+          respondedStudents: Object.keys(attendanceData).length,
+          attendanceRate: (Object.keys(attendanceData).length / students.length) * 100,
+          sessionDuration: 15,
+          teacherName: "Teacher",
+          allStudents: students.map((s: Student) => s.name),
+          checkInTimes: {},
+          metadata: {
+            themeUsed: "Puppy Theme",
+            settingsUsed: { soundEnabled: true, confettiEnabled: true },
+            startTime: "9:00 AM",
+            endTime: "9:15 AM"
+          }
+        }}
+      />
     </div>
   );
 }

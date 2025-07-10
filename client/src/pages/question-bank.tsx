@@ -78,21 +78,11 @@ export default function QuestionBank() {
     }
   }, [isAuthenticated, isLoading, toast]);
 
-  const { data: questions, isLoading: questionsLoading } = useQuery({
+  type Question = { id: number; text: string; options: string[]; correctAnswer: string; type: string; tags?: string[] };
+
+  const { data: questions = [], isLoading: questionsLoading } = useQuery<Question[]>({
     queryKey: ["/api/questions", selectedType !== "all" ? { type: selectedType } : {}],
     retry: false,
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-      }
-    },
   });
 
   const createQuestionMutation = useMutation({
@@ -153,7 +143,7 @@ export default function QuestionBank() {
       queryClient.invalidateQueries({ queryKey: ["/api/questions"] });
       toast({
         title: "Success",
-        description: `Generated ${response.questions.length} questions`,
+        description: `Generated ${(response as any).questions?.length || 0} questions`,
       });
     },
   });

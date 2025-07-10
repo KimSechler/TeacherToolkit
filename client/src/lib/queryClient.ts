@@ -8,14 +8,32 @@ async function throwIfResNotOk(res: Response) {
 }
 
 export async function apiRequest(
-  method: string,
-  url: string,
+  methodOrUrl: string,
+  urlOrOptions?: string | { method: string; body: string },
   data?: unknown | undefined,
 ): Promise<Response> {
+  let method: string;
+  let url: string;
+  let body: string | undefined;
+
+  if (typeof urlOrOptions === 'string') {
+    // First overload: apiRequest(method, url, data?)
+    method = methodOrUrl;
+    url = urlOrOptions;
+    body = data ? JSON.stringify(data) : undefined;
+  } else if (urlOrOptions && typeof urlOrOptions === 'object') {
+    // Second overload: apiRequest(url, { method, body })
+    method = urlOrOptions.method;
+    url = methodOrUrl;
+    body = urlOrOptions.body;
+  } else {
+    throw new Error('Invalid arguments to apiRequest');
+  }
+
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
-    body: data ? JSON.stringify(data) : undefined,
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body,
     credentials: "include",
   });
 
@@ -46,12 +64,25 @@ export const queryClient = new QueryClient({
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
-      refetchOnWindowFocus: false,
-      staleTime: Infinity,
-      retry: false,
+      refetchOnWindowFocus: true, // Enable background updates
+      staleTime: 5 * 60 * 1000, // 5 minutes - reasonable cache time
+      retry: (failureCount, error) => {
+        // Retry network errors, but not auth errors
+        if (error instanceof Error && error.message.includes('401')) {
+          return false;
+        }
+        return failureCount < 3; // Retry up to 3 times
+      },
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
     },
     mutations: {
-      retry: false,
+      retry: (failureCount, error) => {
+        // Don't retry mutations for auth errors
+        if (error instanceof Error && error.message.includes('401')) {
+          return false;
+        }
+        return failureCount < 2; // Retry mutations up to 2 times
+      },
     },
   },
 });

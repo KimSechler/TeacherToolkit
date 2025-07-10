@@ -44,12 +44,13 @@ type StudentFormData = z.infer<typeof studentSchema>;
 
 export default function Classes() {
   const { toast } = useToast();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const queryClient = useQueryClient();
   const [selectedClass, setSelectedClass] = useState<any>(null);
   const [isCreatingClass, setIsCreatingClass] = useState(false);
   const [isAddingStudent, setIsAddingStudent] = useState(false);
   const [editingClass, setEditingClass] = useState<any>(null);
+  const [editingStudent, setEditingStudent] = useState<any>(null);
 
   const classForm = useForm<ClassFormData>({
     resolver: zodResolver(classSchema),
@@ -82,42 +83,52 @@ export default function Classes() {
     }
   }, [isAuthenticated, isLoading, toast]);
 
-  const { data: classes, isLoading: classesLoading } = useQuery({
+  type Class = { id: number; name: string; grade?: string };
+  type Student = { id: number; name: string; avatarUrl?: string };
+
+  const { data: classes = [], isLoading: classesLoading } = useQuery<Class[]>({
     queryKey: ["/api/classes"],
     retry: false,
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-      }
-    },
+    refetchOnWindowFocus: true,
   });
 
-  const { data: students, isLoading: studentsLoading } = useQuery({
+  const { data: students = [], isLoading: studentsLoading } = useQuery<Student[]>({
     queryKey: ["/api/classes", selectedClass?.id, "students"],
     enabled: !!selectedClass,
+    refetchOnWindowFocus: true,
   });
 
   const createClassMutation = useMutation({
     mutationFn: async (data: ClassFormData) => {
-      return await apiRequest("POST", "/api/classes", data);
+      const classData = {
+        ...data,
+        teacherId: user?.id || "1" // Use the actual user ID from auth
+      };
+      console.log("Creating class with data:", classData);
+      return await apiRequest("POST", "/api/classes", classData);
     },
-    onSuccess: () => {
+    onSuccess: (newClass) => {
+      console.log("Class created successfully:", newClass);
       queryClient.invalidateQueries({ queryKey: ["/api/classes"] });
       toast({
         title: "Success",
         description: "Class created successfully",
       });
       setIsCreatingClass(false);
+      setEditingClass(null);
       classForm.reset();
+      // Select the newly created class
+      setTimeout(() => {
+        const classes = queryClient.getQueryData(["/api/classes"]) as Class[];
+        if (classes && classes.length > 0) {
+          const newestClass = classes[classes.length - 1];
+          console.log("Selecting newest class:", newestClass);
+          setSelectedClass(newestClass);
+        }
+      }, 100);
     },
     onError: (error) => {
+      console.error("Error creating class:", error);
       toast({
         title: "Error",
         description: "Failed to create class",
@@ -137,6 +148,7 @@ export default function Classes() {
         description: "Class updated successfully",
       });
       setEditingClass(null);
+      setIsCreatingClass(false);
     },
   });
 
@@ -144,7 +156,7 @@ export default function Classes() {
     mutationFn: async (id: number) => {
       return await apiRequest("DELETE", `/api/classes/${id}`);
     },
-    onSuccess: () => {
+    onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ["/api/classes"] });
       toast({
         title: "Success",
@@ -154,25 +166,66 @@ export default function Classes() {
         setSelectedClass(null);
       }
     },
+    onError: (error) => {
+      console.error("Error deleting class:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete class",
+        variant: "destructive",
+      });
+    },
   });
 
   const addStudentMutation = useMutation({
     mutationFn: async (data: StudentFormData) => {
-      return await apiRequest("POST", `/api/classes/${selectedClass.id}/students`, data);
+      if (!selectedClass) {
+        throw new Error("No class selected");
+      }
+      const studentData = {
+        ...data,
+        classId: selectedClass.id
+      };
+      console.log("Adding student with data:", studentData);
+      return await apiRequest("POST", `/api/classes/${selectedClass.id}/students`, studentData);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/classes", selectedClass.id, "students"] });
+    onSuccess: (newStudent) => {
+      console.log("Student added successfully:", newStudent);
+      queryClient.invalidateQueries({ queryKey: ["/api/classes", selectedClass?.id, "students"] });
       toast({
         title: "Success",
         description: "Student added successfully",
       });
       setIsAddingStudent(false);
+      setEditingStudent(null);
       studentForm.reset();
+    },
+    onError: (error) => {
+      console.error("Error adding student:", error);
+      toast({
+        title: "Error",
+        description: "Failed to add student",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateStudentMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Partial<StudentFormData> }) => {
+      return await apiRequest("PUT", `/api/students/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/classes", selectedClass.id, "students"] });
+      toast({
+        title: "Success",
+        description: "Student updated successfully",
+      });
+      setEditingStudent(null);
+      setIsAddingStudent(false);
     },
     onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to add student",
+        description: "Failed to update student",
         variant: "destructive",
       });
     },
@@ -183,10 +236,18 @@ export default function Classes() {
       return await apiRequest("DELETE", `/api/students/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/classes", selectedClass.id, "students"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/classes", selectedClass?.id, "students"] });
       toast({
         title: "Success",
         description: "Student removed successfully",
+      });
+    },
+    onError: (error) => {
+      console.error("Error deleting student:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete student",
+        variant: "destructive",
       });
     },
   });
@@ -200,7 +261,11 @@ export default function Classes() {
   };
 
   const onSubmitStudent = (data: StudentFormData) => {
-    addStudentMutation.mutate(data);
+    if (editingStudent) {
+      updateStudentMutation.mutate({ id: editingStudent.id, data });
+    } else {
+      addStudentMutation.mutate(data);
+    }
   };
 
   const handleEditClass = (classItem: any) => {
@@ -213,6 +278,12 @@ export default function Classes() {
     if (confirm("Are you sure you want to delete this class? This will also remove all students.")) {
       deleteClassMutation.mutate(classId);
     }
+  };
+
+  const handleEditStudent = (student: any) => {
+    setEditingStudent(student);
+    studentForm.reset(student);
+    setIsAddingStudent(true);
   };
 
   const handleDeleteStudent = (studentId: number) => {
@@ -353,7 +424,11 @@ export default function Classes() {
                       <p className="text-gray-600 mb-4">No classes created yet</p>
                       <Button
                         variant="outline"
-                        onClick={() => setIsCreatingClass(true)}
+                        onClick={() => {
+                          setEditingClass(null);
+                          classForm.reset();
+                          setIsCreatingClass(true);
+                        }}
                       >
                         <Plus className="w-4 h-4 mr-2" />
                         Create First Class
@@ -388,7 +463,11 @@ export default function Classes() {
                         <div className="flex items-center justify-between">
                           <CardTitle>Students</CardTitle>
                           <Button
-                            onClick={() => setIsAddingStudent(true)}
+                            onClick={() => {
+                              setEditingStudent(null);
+                              studentForm.reset();
+                              setIsAddingStudent(true);
+                            }}
                             className="bg-green-600 hover:bg-green-700"
                           >
                             <UserPlus className="w-4 h-4 mr-2" />
@@ -424,13 +503,22 @@ export default function Classes() {
                                     <span className="text-xs text-gray-500">Active</span>
                                   </div>
                                 </div>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleDeleteStudent(student.id)}
-                                >
-                                  <Trash2 className="w-4 h-4 text-red-500" />
-                                </Button>
+                                <div className="flex items-center space-x-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEditStudent(student)}
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteStudent(student.id)}
+                                  >
+                                    <Trash2 className="w-4 h-4 text-red-500" />
+                                  </Button>
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -440,7 +528,11 @@ export default function Classes() {
                             <p className="text-gray-600 mb-4">No students added yet</p>
                             <Button
                               variant="outline"
-                              onClick={() => setIsAddingStudent(true)}
+                              onClick={() => {
+                                setEditingStudent(null);
+                                studentForm.reset();
+                                setIsAddingStudent(true);
+                              }}
                             >
                               <UserPlus className="w-4 h-4 mr-2" />
                               Add First Student
@@ -537,7 +629,13 @@ export default function Classes() {
           </div>
 
           {/* Create/Edit Class Dialog */}
-          <Dialog open={isCreatingClass} onOpenChange={setIsCreatingClass}>
+          <Dialog open={isCreatingClass} onOpenChange={(open) => {
+            setIsCreatingClass(open);
+            if (!open) {
+              setEditingClass(null);
+              classForm.reset();
+            }
+          }}>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>
@@ -576,7 +674,11 @@ export default function Classes() {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setIsCreatingClass(false)}
+                      onClick={() => {
+                        setIsCreatingClass(false);
+                        setEditingClass(null);
+                        classForm.reset();
+                      }}
                     >
                       Cancel
                     </Button>
@@ -595,11 +697,19 @@ export default function Classes() {
             </DialogContent>
           </Dialog>
 
-          {/* Add Student Dialog */}
-          <Dialog open={isAddingStudent} onOpenChange={setIsAddingStudent}>
+          {/* Add/Edit Student Dialog */}
+          <Dialog open={isAddingStudent} onOpenChange={(open) => {
+            setIsAddingStudent(open);
+            if (!open) {
+              setEditingStudent(null);
+              studentForm.reset();
+            }
+          }}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add New Student</DialogTitle>
+                <DialogTitle>
+                  {editingStudent ? "Edit Student" : "Add New Student"}
+                </DialogTitle>
               </DialogHeader>
               <Form {...studentForm}>
                 <form onSubmit={studentForm.handleSubmit(onSubmitStudent)} className="space-y-4">
@@ -620,18 +730,22 @@ export default function Classes() {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setIsAddingStudent(false)}
+                      onClick={() => {
+                        setIsAddingStudent(false);
+                        setEditingStudent(null);
+                        studentForm.reset();
+                      }}
                     >
                       Cancel
                     </Button>
                     <Button
                       type="submit"
-                      disabled={addStudentMutation.isPending}
+                      disabled={addStudentMutation.isPending || updateStudentMutation.isPending}
                     >
-                      {addStudentMutation.isPending ? (
+                      {addStudentMutation.isPending || updateStudentMutation.isPending ? (
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                       ) : null}
-                      Add Student
+                      {editingStudent ? "Update" : "Add Student"}
                     </Button>
                   </div>
                 </form>

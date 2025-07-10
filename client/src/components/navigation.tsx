@@ -1,10 +1,12 @@
 import { useAuth } from "@/hooks/useAuth";
+import { User } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { GraduationCap, Bell, LogOut } from "lucide-react";
 
 export default function Navigation() {
   const { user } = useAuth();
+  const typedUser = user as User | undefined;
 
   const handleLogout = () => {
     window.location.href = "/api/logout";
@@ -37,21 +39,21 @@ export default function Navigation() {
 
             {/* User Profile */}
             <div className="flex items-center space-x-3">
-              {user?.profileImageUrl ? (
+              {typedUser?.profileImageUrl ? (
                 <img 
-                  src={user.profileImageUrl} 
+                  src={typedUser.profileImageUrl} 
                   alt="Profile" 
                   className="w-8 h-8 rounded-full object-cover"
                 />
               ) : (
                 <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
                   <span className="text-sm font-medium text-gray-600">
-                    {user?.firstName?.[0] || "U"}
+                    {typedUser?.firstName?.[0] || "U"}
                   </span>
                 </div>
               )}
               <span className="text-sm font-medium text-gray-700 hidden sm:block">
-                {user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'User'}
+                {typedUser?.firstName ? `${typedUser.firstName} ${typedUser.lastName || ''}`.trim() : 'User'}
               </span>
               <Button variant="ghost" size="sm" onClick={handleLogout}>
                 <LogOut className="w-4 h-4" />

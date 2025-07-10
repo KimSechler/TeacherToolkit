@@ -94,11 +94,11 @@ export default function AIAssistant() {
       const aiMessage: Message = {
         id: Date.now().toString(),
         type: "ai",
-        content: `I've generated ${response.questions.length} questions about ${response.questions[0]?.topic || "the topic"}. Here they are:`,
+        content: `I've generated ${(response as any).questions?.length || 0} questions about ${(response as any).questions?.[0]?.topic || "the topic"}. Here they are:`,
         timestamp: new Date(),
         actions: [
-          { label: "Add to Question Bank", action: "add_to_bank", data: response.questions },
-          { label: "Create Game", action: "create_game", data: response.questions },
+                      { label: "Add to Question Bank", action: "add_to_bank", data: (response as any).questions },
+            { label: "Create Game", action: "create_game", data: (response as any).questions },
         ],
       };
       setMessages(prev => [...prev, aiMessage]);

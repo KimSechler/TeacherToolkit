@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { User } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiRequest } from "@/lib/queryClient";
@@ -31,6 +32,7 @@ import {
   Copy,
   Sparkles
 } from "lucide-react";
+import LiveGameControls from '../components/live-game-controls';
 
 const gameSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -44,7 +46,7 @@ type GameFormData = z.infer<typeof gameSchema>;
 
 export default function GameCreator() {
   const { toast } = useToast();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const queryClient = useQueryClient();
   const [selectedGame, setSelectedGame] = useState<any>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -76,24 +78,15 @@ export default function GameCreator() {
     }
   }, [isAuthenticated, isLoading, toast]);
 
-  const { data: games, isLoading: gamesLoading } = useQuery({
+  type Game = { id: number; title: string; content: any };
+  type Question = { id: number; text: string; options: string[]; correctAnswer: string };
+
+  const { data: games = [], isLoading: gamesLoading } = useQuery<Game[]>({
     queryKey: ["/api/games"],
     retry: false,
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-      }
-    },
   });
 
-  const { data: questions } = useQuery({
+  const { data: questions = [] } = useQuery<Question[]>({
     queryKey: ["/api/questions"],
     retry: false,
   });
@@ -167,11 +160,11 @@ export default function GameCreator() {
       const currentContent = form.getValues("content");
       form.setValue("content", {
         ...currentContent,
-        questions: [...(currentContent.questions || []), ...response.questions],
+        questions: [...(currentContent.questions || []), ...(response as any).questions],
       });
       toast({
         title: "Success",
-        description: `Generated ${response.questions.length} questions`,
+        description: `Generated ${(response as any).questions?.length || 0} questions`,
       });
     },
   });
@@ -546,6 +539,7 @@ export default function GameCreator() {
               </div>
             )}
           </div>
+          <LiveGameControls userId={(user as User)?.id || 'host'} isTeacher={true} />
         </main>
       </div>
     </div>

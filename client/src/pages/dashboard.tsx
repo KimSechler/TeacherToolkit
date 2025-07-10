@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { User } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import Navigation from "@/components/navigation";
@@ -38,17 +39,26 @@ export default function Dashboard() {
     }
   }, [isAuthenticated, isLoading, toast]);
 
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  type Stats = {
+    totalStudents: number;
+    attendanceRate: number;
+    totalGames: number;
+    totalQuestions: number;
+  };
+  type Class = { id: number; name: string; grade?: string };
+  type Game = { id: number; title: string };
+
+  const { data: stats, isLoading: statsLoading } = useQuery<Stats>({
     queryKey: ["/api/dashboard/stats"],
     retry: false,
   });
 
-  const { data: classes, isLoading: classesLoading } = useQuery({
+  const { data: classes = [], isLoading: classesLoading } = useQuery<Class[]>({
     queryKey: ["/api/classes"],
     retry: false,
   });
 
-  const { data: recentGames, isLoading: gamesLoading } = useQuery({
+  const { data: recentGames = [], isLoading: gamesLoading } = useQuery<Game[]>({
     queryKey: ["/api/games"],
     retry: false,
   });
@@ -71,7 +81,7 @@ export default function Dashboard() {
     return "Good evening";
   };
 
-  const userName = user?.firstName || "Teacher";
+  const userName = (user as User)?.firstName || "Teacher";
 
   return (
     <div className="min-h-screen bg-gray-50">

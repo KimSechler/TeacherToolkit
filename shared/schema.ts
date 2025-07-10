@@ -112,6 +112,15 @@ export const aiConversations = pgTable("ai_conversations", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Question usage tracking table
+export const questionUsage = pgTable("question_usage", {
+  id: serial("id").primaryKey(),
+  questionId: integer("question_id").notNull().references(() => questions.id),
+  classId: integer("class_id").notNull().references(() => classes.id),
+  usedAt: timestamp("used_at").defaultNow(),
+  teacherId: varchar("teacher_id").notNull().references(() => users.id),
+});
+
 // Define relations
 export const usersRelations = relations(users, ({ many }) => ({
   classes: many(classes),
@@ -157,6 +166,12 @@ export const aiConversationsRelations = relations(aiConversations, ({ one }) => 
   teacher: one(users, { fields: [aiConversations.teacherId], references: [users.id] }),
 }));
 
+export const questionUsageRelations = relations(questionUsage, ({ one }) => ({
+  question: one(questions, { fields: [questionUsage.questionId], references: [questions.id] }),
+  class: one(classes, { fields: [questionUsage.classId], references: [classes.id] }),
+  teacher: one(users, { fields: [questionUsage.teacherId], references: [users.id] }),
+}));
+
 // Types
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -181,6 +196,9 @@ export type GameSession = typeof gameSessions.$inferSelect;
 
 export type InsertAiConversation = typeof aiConversations.$inferInsert;
 export type AiConversation = typeof aiConversations.$inferSelect;
+
+export type QuestionUsage = typeof questionUsage.$inferSelect;
+export type InsertQuestionUsage = typeof questionUsage.$inferInsert;
 
 // Insert schemas
 export const insertClassSchema = createInsertSchema(classes).omit({
@@ -215,8 +233,6 @@ export const insertGameSessionSchema = createInsertSchema(gameSessions).omit({
   startedAt: true,
 });
 
-export const insertAiConversationSchema = createInsertSchema(aiConversations).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export const insertAiConversationSchema = createInsertSchema(aiConversations);
+
+export const insertQuestionUsageSchema = createInsertSchema(questionUsage);
