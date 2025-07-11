@@ -17,8 +17,11 @@ import {
   Plus,
   Clock,
   CheckCircle,
-  Star
+  Star,
+  Settings
 } from "lucide-react";
+import { PlanManager } from "@/components/plan-manager";
+import { AdminPanel } from "@/components/admin-panel";
 
 export default function Dashboard() {
   const { toast } = useToast();
@@ -308,6 +311,34 @@ export default function Dashboard() {
               )}
             </CardContent>
           </Card>
+
+          {/* Plan Management */}
+          <Card className="mt-6 border-0 shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Settings className="w-5 h-5 mr-2" />
+                Plan & Usage
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PlanManager />
+            </CardContent>
+          </Card>
+
+          {/* Admin Panel - Only visible to admin users */}
+          {user?.email === 'andrewjstoy@gmail.com' && (
+            <Card className="mt-6 border-0 shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Settings className="w-5 h-5 mr-2" />
+                  Admin Panel
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AdminPanel />
+              </CardContent>
+            </Card>
+          )}
         </main>
       </div>
     </div>

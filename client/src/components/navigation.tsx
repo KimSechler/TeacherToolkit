@@ -1,15 +1,19 @@
 import { useAuth } from "@/hooks/useAuth";
-import { User } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { GraduationCap, Bell, LogOut } from "lucide-react";
+import { signOut } from "@/lib/supabase";
 
 export default function Navigation() {
   const { user } = useAuth();
-  const typedUser = user as User | undefined;
 
-  const handleLogout = () => {
-    window.location.href = "/api/logout";
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      window.location.href = "/login";
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
   };
 
   return (
@@ -39,21 +43,21 @@ export default function Navigation() {
 
             {/* User Profile */}
             <div className="flex items-center space-x-3">
-              {typedUser?.profileImageUrl ? (
+              {user?.user_metadata?.avatar_url ? (
                 <img 
-                  src={typedUser.profileImageUrl} 
+                  src={user.user_metadata.avatar_url} 
                   alt="Profile" 
                   className="w-8 h-8 rounded-full object-cover"
                 />
               ) : (
                 <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
                   <span className="text-sm font-medium text-gray-600">
-                    {typedUser?.firstName?.[0] || "U"}
+                    {user?.email?.[0]?.toUpperCase() || "U"}
                   </span>
                 </div>
               )}
               <span className="text-sm font-medium text-gray-700 hidden sm:block">
-                {typedUser?.firstName ? `${typedUser.firstName} ${typedUser.lastName || ''}`.trim() : 'User'}
+                {user?.user_metadata?.full_name || user?.email || 'User'}
               </span>
               <Button variant="ghost" size="sm" onClick={handleLogout}>
                 <LogOut className="w-4 h-4" />

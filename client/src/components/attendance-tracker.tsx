@@ -60,23 +60,26 @@ export default function AttendanceTracker({ classId, date = new Date(), question
 
   // Fetch students for the class
   const { data: students = [] as Student[], isLoading: studentsLoading } = useQuery<Student[]>({
-    queryKey: ['/api/students', classId],
+    queryKey: ['/api/classes', classId, 'students'],
     enabled: !!classId,
+    retry: 3,
+    staleTime: 30000,
   });
 
   // Create or update attendance record
   const attendanceMutation = useMutation({
-    mutationFn: async ({ studentId, status, notes }: { studentId: number; status: string; notes?: string }) => {
+    mutationFn: async ({ studentId, isPresent, answer }: { studentId: number; isPresent: boolean; answer?: string }) => {
       return apiRequest('POST', `/api/attendance`, {
         studentId,
         classId,
         date: selectedDate,
-        status,
-        notes,
+        isPresent,
+        answer,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/attendance'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/classes', classId, 'attendance'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/classes', classId, 'attendance', 'stats'] });
       toast({
         title: "Attendance Updated",
         description: "Student attendance has been recorded.",
@@ -96,6 +99,17 @@ export default function AttendanceTracker({ classId, date = new Date(), question
   const getPuppyEmoji = (studentName: string) => {
     const studentIndex = students.findIndex((s: Student) => s.name === studentName);
     return puppyStyles[puppyStyle][studentIndex % puppyStyles[puppyStyle].length];
+  };
+
+  // Helper function to format student name for display (First Name + Last Initial)
+  const formatStudentName = (fullName: string) => {
+    const parts = fullName.split(' ');
+    if (parts.length >= 2) {
+      const firstName = parts[0];
+      const lastName = parts[parts.length - 1];
+      return `${firstName} ${lastName.charAt(0)}.`;
+    }
+    return fullName; // Fallback for single names
   };
 
   const handleDragStart = (e: React.DragEvent, studentName: string) => {
@@ -147,8 +161,8 @@ export default function AttendanceTracker({ classId, date = new Date(), question
     if (student) {
       attendanceMutation.mutate({ 
         studentId: student.id, 
-        status: 'present', 
-        notes: `Question: ${questionOfDay} | Answer: ${answer}` 
+        isPresent: true, 
+        answer: answer 
       });
     }
   };
@@ -165,8 +179,8 @@ export default function AttendanceTracker({ classId, date = new Date(), question
     if (student) {
       attendanceMutation.mutate({ 
         studentId: student.id, 
-        status: 'not-marked', 
-        notes: '' 
+        isPresent: false, 
+        answer: '' 
       });
     }
   };
@@ -195,8 +209,8 @@ export default function AttendanceTracker({ classId, date = new Date(), question
     students.forEach((student: Student) => {
       attendanceMutation.mutate({ 
         studentId: student.id, 
-        status: 'not-marked', 
-        notes: '' 
+        isPresent: false, 
+        answer: '' 
       });
     });
   };
@@ -346,7 +360,7 @@ export default function AttendanceTracker({ classId, date = new Date(), question
                       <div className={`text-sm font-medium text-gray-800 bg-white rounded-full px-2 py-1 shadow-sm ${
                         selectedStudent === studentName ? 'bg-yellow-100 border-2 border-yellow-500' : ''
                       }`}>
-                        {studentName}
+                        {formatStudentName(studentName)}
                       </div>
                     </div>
                   ))}
@@ -388,7 +402,7 @@ export default function AttendanceTracker({ classId, date = new Date(), question
                       <div className={`text-lg font-medium text-gray-800 bg-white rounded-full px-3 py-1 shadow-sm ${
                         isSelected ? 'bg-yellow-100 border-2 border-yellow-500' : ''
                       }`}>
-                        {studentName}
+                        {formatStudentName(studentName)}
                       </div>
                     </div>
                   );

@@ -93,6 +93,8 @@ export default function AttendanceTrackerFull({
   const { data: students = [] as Student[], isLoading: studentsLoading } = useQuery<Student[]>({
     queryKey: ['/api/classes', classId, 'students'],
     enabled: !!classId,
+    retry: 3,
+    staleTime: 30000,
   });
 
   // Fetch recently used questions for this class
@@ -130,7 +132,8 @@ export default function AttendanceTrackerFull({
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/attendance'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/classes', classId, 'attendance'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/classes', classId, 'attendance', 'stats'] });
       toast({
         title: "🎉 Attendance Updated!",
         description: "Student attendance has been recorded with sparkles! ✨",
@@ -172,7 +175,7 @@ export default function AttendanceTrackerFull({
   const answers = answerOptions.split('\n').filter(a => a.trim());
   const colors = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'];
 
-  // Helper function to format student name for display (First Last.)
+  // Helper function to format student name for display (First Name + Last Initial)
   const formatStudentName = (fullName: string) => {
     const parts = fullName.split(' ');
     if (parts.length >= 2) {
@@ -281,6 +284,16 @@ export default function AttendanceTrackerFull({
     if (currentQuestionId) {
       recordQuestionUsageMutation.mutate(currentQuestionId);
     }
+    
+    // Save attendance to database
+    const student = students.find((s: Student) => s.name === studentName);
+    if (student) {
+      attendanceMutation.mutate({
+        studentId: student.id,
+        status: 'present',
+        notes: answer
+      });
+    }
   };
 
   const moveStudentToOriginal = (studentName: string) => {
@@ -303,6 +316,16 @@ export default function AttendanceTrackerFull({
     const studentElement = document.querySelector(`[data-student="${studentName}"]`) as HTMLElement;
     if (studentElement) {
       animateElement(studentElement, 'animate-pulse', 500);
+    }
+    
+    // Save attendance to database
+    const student = students.find((s: Student) => s.name === studentName);
+    if (student) {
+      attendanceMutation.mutate({
+        studentId: student.id,
+        status: 'absent',
+        notes: ''
+      });
     }
   };
 
@@ -589,8 +612,8 @@ export default function AttendanceTrackerFull({
                       }}
                     >
                       <div className="text-4xl mb-1">{getStudentEmoji(studentName)}</div>
-                      <div className={`text-sm font-medium text-white bg-black/20 rounded-full px-2 py-1 backdrop-blur-sm ${
-                        selectedStudent === studentName ? 'animate-pulse shadow-lg shadow-white/50' : ''
+                      <div className={`text-sm font-medium text-gray-800 bg-white rounded-full px-2 py-1 shadow-sm ${
+                        selectedStudent === studentName ? 'bg-yellow-100 border-2 border-yellow-500' : ''
                       }`}>
                         {formatStudentName(studentName)}
                       </div>
@@ -644,8 +667,8 @@ export default function AttendanceTrackerFull({
                           </div>
                         )}
                       </div>
-                      <div className={`text-lg font-medium text-white bg-black/20 rounded-full px-3 py-1 backdrop-blur-sm border border-white/20 ${
-                        isSelected ? 'animate-pulse shadow-lg shadow-white/50 bg-gradient-to-r from-yellow-400/20 to-orange-400/20' : ''
+                      <div className={`text-lg font-medium text-gray-800 bg-white rounded-full px-3 py-1 shadow-sm ${
+                        isSelected ? 'bg-yellow-100 border-2 border-yellow-500' : ''
                       }`}>
                         {formatStudentName(studentName)}
                       </div>

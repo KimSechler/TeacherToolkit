@@ -1,12 +1,22 @@
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
-import ws from "ws";
+import { Pool } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from "@shared/schema";
 
-neonConfig.webSocketConstructor = ws;
+// Database connection
+let db: any;
 
-// For development/testing without a real database
-if (!process.env.DATABASE_URL) {
+if (process.env.DATABASE_URL) {
+  // Use real database
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false
+    }
+  });
+  
+  db = drizzle(pool, { schema });
+  console.log("✅ Connected to Supabase database");
+} else {
   console.warn("⚠️  DATABASE_URL not set. Using mock database for development.");
   console.warn("   Set up a real database for full functionality.");
 }
@@ -321,15 +331,22 @@ const createMockDb = () => {
 };
 
 // Export the database instance
-let db: any;
-
 if (process.env.DATABASE_URL) {
   // Use real database
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false
+    }
+  });
+  
   db = drizzle(pool, { schema });
+  console.log("✅ Connected to Supabase database");
 } else {
   // Use mock database
   db = createMockDb();
+  console.warn("⚠️  DATABASE_URL not set. Using mock database for development.");
+  console.warn("   Set up a real database for full functionality.");
 }
 
 export { db };
