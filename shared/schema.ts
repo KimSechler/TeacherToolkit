@@ -31,6 +31,29 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  
+  // Subscription fields (Phase 1)
+  planId: varchar("plan_id").default('free'), // 'free', 'basic', 'pro', 'enterprise'
+  planStatus: varchar("plan_status").default('active'), // 'active', 'past_due', 'canceled', 'trial'
+  subscriptionId: varchar("subscription_id"), // Future: Stripe subscription ID
+  currentPeriodStart: timestamp("current_period_start"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  
+  // Usage tracking (Phase 1)
+  monthlyUsage: jsonb("monthly_usage").default({ 
+    questions: 0, 
+    games: 0, 
+    classes: 0, 
+    students: 0,
+    storage: 0 
+  }),
+  usageResetDate: timestamp("usage_reset_date"),
+  
+  // Compliance (Phase 1)
+  dataRetentionConsent: boolean("data_retention_consent").default(false),
+  marketingConsent: boolean("marketing_consent").default(false),
+  lastPrivacyUpdate: timestamp("last_privacy_update"),
+  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -121,6 +144,88 @@ export const questionUsage = pgTable("question_usage", {
   teacherId: varchar("teacher_id").notNull().references(() => users.id),
 });
 
+// Plans table (Phase 1)
+export const plans = pgTable("plans", {
+  id: varchar("id").primaryKey().notNull(), // 'free', 'basic', 'pro', 'enterprise'
+  name: varchar("name").notNull(),
+  description: text("description"),
+  price: integer("price"), // Price in cents (0 for free)
+  billingCycle: varchar("billing_cycle"), // 'monthly', 'yearly'
+  
+  // Limits
+  maxClasses: integer("max_classes"),
+  maxStudents: integer("max_students"),
+  maxQuestionsPerMonth: integer("max_questions_per_month"),
+  maxGamesPerMonth: integer("max_games_per_month"),
+  maxStorageMb: integer("max_storage_mb"),
+  
+  // Features
+  features: jsonb("features"), // Array of feature strings
+  isActive: boolean("is_active").default(true),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Usage logs table (Phase 1)
+export const usageLogs = pgTable("usage_logs", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  action: varchar("action").notNull(), // 'create_question', 'create_game', 'create_class', 'add_student'
+  resourceType: varchar("resource_type").notNull(), // 'question', 'game', 'class', 'student'
+  resourceId: varchar("resource_id"),
+  metadata: jsonb("metadata"), // Additional context
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+// RBAC System Tables (Phase 1)
+export const roles = pgTable("roles", {
+  id: varchar("id").primaryKey().notNull(), // 'user', 'admin', 'super_admin', 'support'
+  name: varchar("name").notNull(),
+  description: text("description"),
+  permissions: jsonb("permissions").notNull(), // Array of permission strings
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const userRoles = pgTable("user_roles", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  roleId: varchar("role_id").notNull().references(() => roles.id, { onDelete: 'cascade' }),
+  assignedBy: varchar("assigned_by").references(() => users.id), // Who assigned this role
+  assignedAt: timestamp("assigned_at").defaultNow(),
+  expiresAt: timestamp("expires_at"), // Optional expiration
+  isActive: boolean("is_active").default(true),
+});
+
+export const adminInvitations = pgTable("admin_invitations", {
+  id: serial("id").primaryKey(),
+  email: varchar("email").notNull(),
+  roleId: varchar("role_id").notNull().references(() => roles.id),
+  invitedBy: varchar("invited_by").notNull().references(() => users.id),
+  token: varchar("token").notNull().unique(), // Secure invitation token
+  expiresAt: timestamp("expires_at").notNull(),
+  acceptedAt: timestamp("accepted_at"),
+  status: varchar("status").default('pending'), // 'pending', 'accepted', 'expired'
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const adminAuditLogs = pgTable("admin_audit_logs", {
+  id: serial("id").primaryKey(),
+  adminId: varchar("admin_id").notNull().references(() => users.id),
+  action: varchar("action").notNull(), // 'user_plan_change', 'role_assignment', 'usage_reset', etc.
+  targetUserId: varchar("target_user_id").references(() => users.id), // User being acted upon
+  resourceType: varchar("resource_type"), // 'user', 'role', 'plan', etc.
+  resourceId: varchar("resource_id"),
+  oldValue: jsonb("old_value"), // Previous state
+  newValue: jsonb("new_value"), // New state
+  metadata: jsonb("metadata"), // Additional context
+  ipAddress: varchar("ip_address"),
+  userAgent: text("user_agent"),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
 // Define relations
 export const usersRelations = relations(users, ({ many }) => ({
   classes: many(classes),
@@ -172,6 +277,14 @@ export const questionUsageRelations = relations(questionUsage, ({ one }) => ({
   teacher: one(users, { fields: [questionUsage.teacherId], references: [users.id] }),
 }));
 
+export const plansRelations = relations(plans, ({ many }) => ({
+  users: many(users),
+}));
+
+export const usageLogsRelations = relations(usageLogs, ({ one }) => ({
+  user: one(users, { fields: [usageLogs.userId], references: [users.id] }),
+}));
+
 // Types
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -199,6 +312,25 @@ export type AiConversation = typeof aiConversations.$inferSelect;
 
 export type QuestionUsage = typeof questionUsage.$inferSelect;
 export type InsertQuestionUsage = typeof questionUsage.$inferInsert;
+
+export type Plan = typeof plans.$inferSelect;
+export type InsertPlan = typeof plans.$inferInsert;
+
+export type UsageLog = typeof usageLogs.$inferSelect;
+export type InsertUsageLog = typeof usageLogs.$inferInsert;
+
+// RBAC Types
+export type Role = typeof roles.$inferSelect;
+export type InsertRole = typeof roles.$inferInsert;
+
+export type UserRole = typeof userRoles.$inferSelect;
+export type InsertUserRole = typeof userRoles.$inferInsert;
+
+export type AdminInvitation = typeof adminInvitations.$inferSelect;
+export type InsertAdminInvitation = typeof adminInvitations.$inferInsert;
+
+export type AdminAuditLog = typeof adminAuditLogs.$inferSelect;
+export type InsertAdminAuditLog = typeof adminAuditLogs.$inferInsert;
 
 // Insert schemas
 export const insertClassSchema = createInsertSchema(classes).omit({
@@ -235,4 +367,18 @@ export const insertGameSessionSchema = createInsertSchema(gameSessions).omit({
 
 export const insertAiConversationSchema = createInsertSchema(aiConversations);
 
-export const insertQuestionUsageSchema = createInsertSchema(questionUsage);
+export const insertQuestionUsageSchema = createInsertSchema(questionUsage).omit({
+  id: true,
+  usedAt: true,
+});
+
+export const insertPlanSchema = createInsertSchema(plans).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertUsageLogSchema = createInsertSchema(usageLogs).omit({
+  id: true,
+  timestamp: true,
+});

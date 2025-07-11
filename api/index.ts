@@ -1,13 +1,11 @@
 import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
-import { setupSupabaseAuth, isAuthenticated } from "./supabaseAuth";
-import { setupGoogleAuth, isGoogleAuthAvailable } from "./googleAuth";
-import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
-import { setupWebSocket } from './ws';
-import { storage } from "./storage";
-import { db } from "./db";
+import { setupSupabaseAuth, isAuthenticated } from "../server/supabaseAuth";
+import { setupGoogleAuth, isGoogleAuthAvailable } from "../server/googleAuth";
+import { registerRoutes } from "../server/routes";
+import { storage } from "../server/storage";
+import { db } from "../server/db";
 
 const app = express();
 app.use(express.json());
@@ -19,7 +17,7 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false, // Set to true in production with HTTPS
+    secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
@@ -56,24 +54,24 @@ app.use((req, res, next) => {
         logLine = logLine.slice(0, 79) + "…";
       }
 
-      log(logLine);
+      console.log(logLine);
     }
   });
 
   next();
 });
 
-(async () => {
-  // Test database connection on startup
-  try {
-    await storage.testDatabaseConnection();
-  } catch (error) {
-    console.error("Failed to test database connection:", error);
-  }
+// Initialize RBAC system (only once)
+let rbacInitialized = false;
 
-  // Initialize RBAC system
+async function initializeRBAC() {
+  if (rbacInitialized) return;
+  
   try {
-    // First, create RBAC tables if they don't exist
+    // Test database connection
+    await storage.testDatabaseConnection();
+    
+    // Create RBAC tables if they don't exist
     console.log("🔧 Creating RBAC tables...");
     await db.execute(`
       CREATE TABLE IF NOT EXISTS "roles" (
@@ -134,49 +132,42 @@ app.use((req, res, next) => {
     console.log("✅ RBAC tables created");
     
     // Initialize roles
-    const { RBACService } = await import('./lib/rbacService');
+    const { RBACService } = await import('../server/lib/rbacService');
     await RBACService.initializeRoles();
     console.log("✅ RBAC system initialized");
     
     // Assign super admin role to andrewjstoy@gmail.com
     const assignSuperAdminRole = await import('../assign-admin-role');
     await assignSuperAdminRole.default();
+    
+    rbacInitialized = true;
   } catch (error) {
     console.error("❌ Failed to initialize RBAC:", error);
   }
+}
 
-  const server = await registerRoutes(app, isAuthenticated);
-
-  // Add this line to start WebSocket server
-  setupWebSocket(server);
-
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    // Log the error for debugging
-    console.error(`[ERROR] ${status}: ${message}`, err);
-    
-    // Only send error response if headers haven't been sent
-    if (!res.headersSent) {
-      res.status(status).json({ message });
-    }
-    
-    // Don't throw the error - it will crash the server
-    // The error is already logged above
-  });
-
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
+// Initialize RBAC on first request
+app.use(async (req, res, next) => {
+  if (!rbacInitialized) {
+    await initializeRBAC();
   }
+  next();
+});
 
-  const port = 3000;
-  server.listen({
-    port,
-    host: "0.0.0.0",
-  }, () => {
-    log(`serving on port ${port}`);
-  });
-})();
+// Register all API routes
+registerRoutes(app, isAuthenticated);
+
+// Error handling middleware
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  const status = err.status || err.statusCode || 500;
+  const message = err.message || "Internal Server Error";
+
+  console.error(`[ERROR] ${status}: ${message}`, err);
+  
+  if (!res.headersSent) {
+    res.status(status).json({ message });
+  }
+});
+
+// Export for Vercel
+export default app; 

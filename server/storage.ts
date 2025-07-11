@@ -34,6 +34,7 @@ export interface IStorage {
   // User operations (required for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
+  updateUser(id: string, userData: Partial<User>): Promise<User>;
 
   // Class operations
   getClassesByTeacher(teacherId: string): Promise<Class[]>;
@@ -168,6 +169,16 @@ export class DatabaseStorage implements IStorage {
       firstName: "Demo",
       lastName: "Teacher",
       profileImageUrl: "",
+      planId: "free",
+      planStatus: "active",
+      subscriptionId: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      monthlyUsage: { questions: 0, games: 0, classes: 0, students: 0, storage: 0 },
+      usageResetDate: null,
+      dataRetentionConsent: false,
+      marketingConsent: false,
+      lastPrivacyUpdate: null,
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -216,9 +227,60 @@ export class DatabaseStorage implements IStorage {
       firstName: userData.firstName || "Demo",
       lastName: userData.lastName || "Teacher",
       profileImageUrl: userData.profileImageUrl || "",
+      planId: "free",
+      planStatus: "active",
+      subscriptionId: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      monthlyUsage: { questions: 0, games: 0, classes: 0, students: 0, storage: 0 },
+      usageResetDate: null,
+      dataRetentionConsent: false,
+      marketingConsent: false,
+      lastPrivacyUpdate: null,
       createdAt: new Date(),
       updatedAt: new Date()
     };
+  }
+
+  async updateUser(id: string, userData: Partial<User>): Promise<User> {
+    try {
+      // Try real database first
+      if (process.env.DATABASE_URL && db) {
+        const [updatedUser] = await db
+          .update(users)
+          .set({ ...userData, updatedAt: new Date() })
+          .where(eq(users.id, id))
+          .returning();
+        console.log("User updated in database:", updatedUser);
+        return updatedUser;
+      }
+    } catch (error) {
+      console.error("Database error in updateUser:", error);
+    }
+    
+    // Fallback to mock data - return a mock user with updated data
+    const mockUser: User = {
+      id: id,
+      email: userData.email || "teacher@example.com",
+      firstName: userData.firstName || "Demo",
+      lastName: userData.lastName || "Teacher",
+      profileImageUrl: userData.profileImageUrl || "",
+      planId: userData.planId || "free",
+      planStatus: userData.planStatus || "active",
+      subscriptionId: userData.subscriptionId || null,
+      currentPeriodStart: userData.currentPeriodStart || null,
+      currentPeriodEnd: userData.currentPeriodEnd || null,
+      monthlyUsage: userData.monthlyUsage || { questions: 0, games: 0, classes: 0, students: 0, storage: 0 },
+      usageResetDate: userData.usageResetDate || null,
+      dataRetentionConsent: userData.dataRetentionConsent || false,
+      marketingConsent: userData.marketingConsent || false,
+      lastPrivacyUpdate: userData.lastPrivacyUpdate || null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    console.log("Updated user in memory:", mockUser);
+    return mockUser;
   }
 
   // Class operations

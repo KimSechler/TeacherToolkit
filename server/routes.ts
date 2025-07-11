@@ -1,6 +1,9 @@
 import type { Express, RequestHandler } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
+import { users } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import {
   insertClassSchema,
   insertStudentSchema,
@@ -14,6 +17,7 @@ import {
 import { generateQuestions, generateGameTheme, analyzeImage } from "./openai";
 import multer from "multer";
 import fs from "fs";
+import { checkPlanLimit, trackUsage, addUsageInfo } from "./middleware/planEnforcement";
 
 const upload = multer({ dest: "uploads/" });
 
@@ -32,17 +36,23 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
     }
   });
 
-  app.post('/api/classes', isAuthenticated, async (req: any, res) => {
-    try {
-      const teacherId = req.supabaseUser.id;
-      const classData = insertClassSchema.parse({ ...req.body, teacherId });
-      const newClass = await storage.createClass(classData);
-      res.json(newClass);
-    } catch (error) {
-      console.error("Error creating class:", error);
-      res.status(500).json({ message: "Failed to create class" });
+  app.post('/api/classes', 
+    isAuthenticated, 
+    addUsageInfo,
+    checkPlanLimit('create_class'),
+    trackUsage,
+    async (req: any, res) => {
+      try {
+        const teacherId = req.supabaseUser.id;
+        const classData = insertClassSchema.parse({ ...req.body, teacherId });
+        const newClass = await storage.createClass(classData);
+        res.json(newClass);
+      } catch (error) {
+        console.error("Error creating class:", error);
+        res.status(500).json({ message: "Failed to create class" });
+      }
     }
-  });
+  );
 
   app.put('/api/classes/:id', isAuthenticated, async (req: any, res) => {
     try {
@@ -79,17 +89,23 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
     }
   });
 
-  app.post('/api/classes/:classId/students', isAuthenticated, async (req: any, res) => {
-    try {
-      const classId = parseInt(req.params.classId);
-      const studentData = insertStudentSchema.parse({ ...req.body, classId });
-      const newStudent = await storage.createStudent(studentData);
-      res.json(newStudent);
-    } catch (error) {
-      console.error("Error creating student:", error);
-      res.status(500).json({ message: "Failed to create student" });
+  app.post('/api/classes/:classId/students', 
+    isAuthenticated, 
+    addUsageInfo,
+    checkPlanLimit('add_student'),
+    trackUsage,
+    async (req: any, res) => {
+      try {
+        const classId = parseInt(req.params.classId);
+        const studentData = insertStudentSchema.parse({ ...req.body, classId });
+        const newStudent = await storage.createStudent(studentData);
+        res.json(newStudent);
+      } catch (error) {
+        console.error("Error creating student:", error);
+        res.status(500).json({ message: "Failed to create student" });
+      }
     }
-  });
+  );
 
   app.post('/api/classes/:classId/students/bulk', isAuthenticated, async (req: any, res) => {
     try {
@@ -158,17 +174,23 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
     }
   });
 
-  app.post('/api/questions', isAuthenticated, async (req: any, res) => {
-    try {
-      const teacherId = req.supabaseUser.id;
-      const questionData = insertQuestionSchema.parse({ ...req.body, teacherId });
-      const newQuestion = await storage.createQuestion(questionData);
-      res.json(newQuestion);
-    } catch (error) {
-      console.error("Error creating question:", error);
-      res.status(500).json({ message: "Failed to create question" });
+  app.post('/api/questions', 
+    isAuthenticated, 
+    addUsageInfo,
+    checkPlanLimit('create_question'),
+    trackUsage,
+    async (req: any, res) => {
+      try {
+        const teacherId = req.supabaseUser.id;
+        const questionData = insertQuestionSchema.parse({ ...req.body, teacherId });
+        const newQuestion = await storage.createQuestion(questionData);
+        res.json(newQuestion);
+      } catch (error) {
+        console.error("Error creating question:", error);
+        res.status(500).json({ message: "Failed to create question" });
+      }
     }
-  });
+  );
 
   app.put('/api/questions/:id', isAuthenticated, async (req: any, res) => {
     try {
@@ -263,17 +285,23 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
     }
   });
 
-  app.post('/api/games', isAuthenticated, async (req: any, res) => {
-    try {
-      const teacherId = req.supabaseUser.id;
-      const gameData = insertGameSchema.parse({ ...req.body, teacherId });
-      const newGame = await storage.createGame(gameData);
-      res.json(newGame);
-    } catch (error) {
-      console.error("Error creating game:", error);
-      res.status(500).json({ message: "Failed to create game" });
+  app.post('/api/games', 
+    isAuthenticated, 
+    addUsageInfo,
+    checkPlanLimit('create_game'),
+    trackUsage,
+    async (req: any, res) => {
+      try {
+        const teacherId = req.supabaseUser.id;
+        const gameData = insertGameSchema.parse({ ...req.body, teacherId });
+        const newGame = await storage.createGame(gameData);
+        res.json(newGame);
+      } catch (error) {
+        console.error("Error creating game:", error);
+        res.status(500).json({ message: "Failed to create game" });
+      }
     }
-  });
+  );
 
   app.put('/api/games/:id', isAuthenticated, async (req: any, res) => {
     try {
@@ -464,6 +492,7 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
         presentToday,
         attendanceRate,
         responses,
+        date: date.toISOString().split('T')[0]
       });
     } catch (error) {
       console.error("Error fetching attendance stats:", error);
@@ -535,6 +564,415 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
     } catch (error) {
       console.error("Error fetching attendance results:", error);
       res.status(500).json({ message: "Failed to fetch attendance results" });
+    }
+  });
+
+  // Plan management routes (Phase 1)
+  app.get('/api/user/plan', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.supabaseUser.id;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      // Get plan limits
+      const { PlanService } = await import('./lib/planConfig');
+      const planLimits = PlanService.getPlanLimits(user.planId || 'free');
+      
+      // Get current usage
+      const { UsageTracker } = await import('./lib/usageTracker');
+      const currentUsage = await UsageTracker.getUserUsage(userId);
+      
+      // Get upgrade suggestions
+      const suggestions = PlanService.getUpgradeSuggestions(currentUsage);
+
+      res.json({
+        plan: {
+          id: user.planId || 'free',
+          status: user.planStatus || 'active',
+          limits: planLimits,
+          features: planLimits.features
+        },
+        usage: currentUsage,
+        suggestions,
+        nextBillingDate: user.currentPeriodEnd,
+        subscriptionId: user.subscriptionId
+      });
+    } catch (error) {
+      console.error("Error fetching user plan:", error);
+      res.status(500).json({ message: "Failed to fetch user plan" });
+    }
+  });
+
+  app.get('/api/user/usage', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.supabaseUser.id;
+      const { UsageTracker } = await import('./lib/usageTracker');
+      const currentUsage = await UsageTracker.getUserUsage(userId);
+      const actualUsage = await UsageTracker.calculateActualUsage(userId);
+      
+      res.json({
+        current: currentUsage,
+        actual: actualUsage,
+        lastReset: req.supabaseUser.usageResetDate
+      });
+    } catch (error) {
+      console.error("Error fetching user usage:", error);
+      res.status(500).json({ message: "Failed to fetch user usage" });
+    }
+  });
+
+  app.post('/api/user/plan/upgrade', isAuthenticated, async (req: any, res) => {
+    try {
+      const { planId } = req.body;
+      const userId = req.supabaseUser.id;
+      
+      // Validate plan ID
+      const { PlanService } = await import('./lib/planConfig');
+      const planLimits = PlanService.getPlanLimits(planId);
+      
+      // Update user's plan (in Phase 2, this would integrate with Stripe)
+      await storage.updateUser(userId, {
+        planId,
+        planStatus: 'active',
+        updatedAt: new Date()
+      });
+      
+      res.json({ 
+        message: 'Plan upgraded successfully',
+        plan: {
+          id: planId,
+          limits: planLimits,
+          features: planLimits.features
+        }
+      });
+    } catch (error) {
+      console.error("Error upgrading plan:", error);
+      res.status(500).json({ message: "Failed to upgrade plan" });
+    }
+  });
+
+  app.post('/api/user/plan/downgrade', isAuthenticated, async (req: any, res) => {
+    try {
+      const { planId } = req.body;
+      const userId = req.supabaseUser.id;
+      
+      // Validate plan ID
+      const { PlanService } = await import('./lib/planConfig');
+      const planLimits = PlanService.getPlanLimits(planId);
+      
+      // Update user's plan
+      await storage.updateUser(userId, {
+        planId,
+        planStatus: 'active',
+        updatedAt: new Date()
+      });
+      
+      res.json({ 
+        message: 'Plan downgraded successfully',
+        plan: {
+          id: planId,
+          limits: planLimits,
+          features: planLimits.features
+        }
+      });
+    } catch (error) {
+      console.error("Error downgrading plan:", error);
+      res.status(500).json({ message: "Failed to downgrade plan" });
+    }
+  });
+
+  // Admin routes (Phase 1)
+  app.get('/api/admin/stats', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.supabaseUser.id;
+      const { AdminService } = await import('./lib/adminService');
+      
+      // Check if user is admin
+      if (!(await AdminService.isAdmin(userId))) {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      const stats = await AdminService.getSystemStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching admin stats:", error);
+      res.status(500).json({ message: "Failed to fetch admin stats" });
+    }
+  });
+
+  app.get('/api/admin/users', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.supabaseUser.id;
+      const { AdminService } = await import('./lib/adminService');
+      
+      // Check if user is admin
+      if (!(await AdminService.isAdmin(userId))) {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      const users = await AdminService.getAllUsers();
+      res.json(users);
+    } catch (error) {
+      console.error("Error fetching admin users:", error);
+      res.status(500).json({ message: "Failed to fetch admin users" });
+    }
+  });
+
+  app.put('/api/admin/users/:userId/plan', isAuthenticated, async (req: any, res) => {
+    try {
+      const adminUserId = req.supabaseUser.id;
+      const { userId } = req.params;
+      const { planId, planStatus } = req.body;
+      
+      const { AdminService } = await import('./lib/adminService');
+      
+      // Check if user is admin
+      if (!(await AdminService.isAdmin(adminUserId))) {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      await AdminService.updateUserPlan(userId, planId, planStatus);
+      res.json({ message: 'User plan updated successfully' });
+    } catch (error) {
+      console.error("Error updating user plan:", error);
+      res.status(500).json({ message: "Failed to update user plan" });
+    }
+  });
+
+  app.post('/api/admin/users/:userId/reset-usage', isAuthenticated, async (req: any, res) => {
+    try {
+      const adminUserId = req.supabaseUser.id;
+      const { userId } = req.params;
+      
+      const { AdminService } = await import('./lib/adminService');
+      
+      // Check if user is admin
+      if (!(await AdminService.isAdmin(adminUserId))) {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      await AdminService.resetUserUsage(userId);
+      res.json({ message: 'User usage reset successfully' });
+    } catch (error) {
+      console.error("Error resetting user usage:", error);
+      res.status(500).json({ message: "Failed to reset user usage" });
+    }
+  });
+
+  app.get('/api/admin/users/:userId/activity', isAuthenticated, async (req: any, res) => {
+    try {
+      const adminUserId = req.supabaseUser.id;
+      const { userId } = req.params;
+      const days = req.query.days ? parseInt(req.query.days as string) : 30;
+      
+      const { AdminService } = await import('./lib/adminService');
+      
+      // Check if user is admin
+      if (!(await AdminService.isAdmin(adminUserId))) {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      const logs = await AdminService.getUserActivityLogs(userId, days);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching user activity:", error);
+      res.status(500).json({ message: "Failed to fetch user activity" });
+    }
+  });
+
+  app.get('/api/admin/activity', isAuthenticated, async (req: any, res) => {
+    try {
+      const adminUserId = req.supabaseUser.id;
+      const days = req.query.days ? parseInt(req.query.days as string) : 7;
+      
+      const { AdminService } = await import('./lib/adminService');
+      
+      // Check if user is admin
+      if (!(await AdminService.isAdmin(adminUserId))) {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      const logs = await AdminService.getSystemActivityLogs(days);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching system activity:", error);
+      res.status(500).json({ message: "Failed to fetch system activity" });
+    }
+  });
+
+  // RBAC Management Endpoints
+  app.get('/api/admin/roles', isAuthenticated, async (req: any, res) => {
+    try {
+      const adminUserId = req.supabaseUser.id;
+      const { RBACService } = await import('./lib/rbacService');
+      
+      // Check if user has permission to read roles
+      if (!(await RBACService.hasPermission(adminUserId, 'roles', 'read', 'all'))) {
+        return res.status(403).json({ message: 'Insufficient permissions' });
+      }
+
+      const roles = await RBACService.getRoles();
+      res.json(roles);
+    } catch (error) {
+      console.error("Error fetching roles:", error);
+      res.status(500).json({ message: "Failed to fetch roles" });
+    }
+  });
+
+  app.get('/api/admin/users/roles', isAuthenticated, async (req: any, res) => {
+    try {
+      const adminUserId = req.supabaseUser.id;
+      const { RBACService } = await import('./lib/rbacService');
+      
+      // Check if user has permission to read users
+      if (!(await RBACService.hasPermission(adminUserId, 'users', 'read', 'all'))) {
+        return res.status(403).json({ message: 'Insufficient permissions' });
+      }
+
+      const usersWithRoles = await RBACService.getUsersWithRoles();
+      res.json(usersWithRoles);
+    } catch (error) {
+      console.error("Error fetching users with roles:", error);
+      res.status(500).json({ message: "Failed to fetch users with roles" });
+    }
+  });
+
+  app.post('/api/admin/users/:userId/roles', isAuthenticated, async (req: any, res) => {
+    try {
+      const adminUserId = req.supabaseUser.id;
+      const { userId } = req.params;
+      const { roleId } = req.body;
+      
+      const { RBACService } = await import('./lib/rbacService');
+      
+      // Check if user has permission to assign roles
+      if (!(await RBACService.hasPermission(adminUserId, 'roles', 'write', 'all'))) {
+        return res.status(403).json({ message: 'Insufficient permissions' });
+      }
+
+      await RBACService.assignRole(userId, roleId, adminUserId);
+      res.json({ message: 'Role assigned successfully' });
+    } catch (error) {
+      console.error("Error assigning role:", error);
+      res.status(500).json({ message: (error as Error).message || "Failed to assign role" });
+    }
+  });
+
+  app.delete('/api/admin/users/:userId/roles/:roleId', isAuthenticated, async (req: any, res) => {
+    try {
+      const adminUserId = req.supabaseUser.id;
+      const { userId, roleId } = req.params;
+      
+      const { RBACService } = await import('./lib/rbacService');
+      
+      // Check if user has permission to remove roles
+      if (!(await RBACService.hasPermission(adminUserId, 'roles', 'write', 'all'))) {
+        return res.status(403).json({ message: 'Insufficient permissions' });
+      }
+
+      await RBACService.removeRole(userId, roleId, adminUserId);
+      res.json({ message: 'Role removed successfully' });
+    } catch (error) {
+      console.error("Error removing role:", error);
+      res.status(500).json({ message: (error as Error).message || "Failed to remove role" });
+    }
+  });
+
+  app.delete('/api/admin/users/:userId', isAuthenticated, async (req: any, res) => {
+    try {
+      const adminUserId = req.supabaseUser.id;
+      const { userId } = req.params;
+      
+      const { RBACService } = await import('./lib/rbacService');
+      
+      // Check if user has permission to delete users
+      if (!(await RBACService.hasPermission(adminUserId, 'users', 'delete', 'all'))) {
+        return res.status(403).json({ message: 'Insufficient permissions' });
+      }
+
+      // Prevent self-deletion
+      if (adminUserId === userId) {
+        return res.status(400).json({ message: 'Cannot delete your own account' });
+      }
+
+      // Check if user is a super admin (prevent deletion of super admins)
+      const isSuperAdmin = await RBACService.hasRole(userId, 'super_admin');
+      if (isSuperAdmin) {
+        return res.status(400).json({ message: 'Cannot delete super admin accounts' });
+      }
+
+      // Delete user from database
+      await db.delete(users).where(eq(users.id, userId));
+      
+      // Log the action
+      await RBACService.logAdminAction(adminUserId, 'user_deletion', userId, 'users', null, null);
+      
+      res.json({ message: 'User deleted successfully' });
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      res.status(500).json({ message: (error as Error).message || "Failed to delete user" });
+    }
+  });
+
+  app.post('/api/admin/invitations', isAuthenticated, async (req: any, res) => {
+    try {
+      const adminUserId = req.supabaseUser.id;
+      const { email, roleId } = req.body;
+      
+      const { RBACService } = await import('./lib/rbacService');
+      
+      // Check if user has permission to create invitations
+      if (!(await RBACService.hasPermission(adminUserId, 'roles', 'write', 'all'))) {
+        return res.status(403).json({ message: 'Insufficient permissions' });
+      }
+
+      const token = await RBACService.createInvitation(email, roleId, adminUserId);
+      res.json({ 
+        message: 'Invitation created successfully',
+        token: token.substring(0, 8) + '...' // Return partial token for security
+      });
+    } catch (error) {
+      console.error("Error creating invitation:", error);
+      res.status(500).json({ message: (error as Error).message || "Failed to create invitation" });
+    }
+  });
+
+  app.post('/api/admin/invitations/:token/accept', isAuthenticated, async (req: any, res) => {
+    try {
+      const { token } = req.params;
+      const userId = req.supabaseUser.id;
+      
+      const { RBACService } = await import('./lib/rbacService');
+      
+      await RBACService.acceptInvitation(token, userId);
+      res.json({ message: 'Invitation accepted successfully' });
+    } catch (error) {
+      console.error("Error accepting invitation:", error);
+      res.status(500).json({ message: (error as Error).message || "Failed to accept invitation" });
+    }
+  });
+
+  app.get('/api/admin/audit-logs', isAuthenticated, async (req: any, res) => {
+    try {
+      const adminUserId = req.supabaseUser.id;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+      const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
+      
+      const { RBACService } = await import('./lib/rbacService');
+      
+      // Check if user has permission to read audit logs
+      if (!(await RBACService.hasPermission(adminUserId, 'admin_audit', 'read'))) {
+        return res.status(403).json({ message: 'Insufficient permissions' });
+      }
+
+      const logs = await RBACService.getAuditLogs(limit, offset);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching audit logs:", error);
+      res.status(500).json({ message: "Failed to fetch audit logs" });
     }
   });
 
