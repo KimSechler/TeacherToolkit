@@ -18,7 +18,10 @@ export default function AuthCallback() {
 
         if (data.session) {
           // Successfully authenticated, redirect to dashboard
-          window.location.href = '/'
+          // Use a longer delay to ensure auth state is properly set and prevent 404
+          setTimeout(() => {
+            window.location.href = '/'
+          }, 500)
         } else {
           setError('No session found. Please try logging in again.')
         }

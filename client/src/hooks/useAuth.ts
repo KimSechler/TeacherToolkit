@@ -15,7 +15,10 @@ export function useAuth() {
         console.error("Error getting session:", error);
         setUser(null);
       } finally {
-        setIsLoading(false);
+        // Add a small delay to prevent flashing
+        setTimeout(() => {
+          setIsLoading(false);
+        }, 100);
       }
     };
 
@@ -23,8 +26,12 @@ export function useAuth() {
 
     // Listen for auth changes
     const { data: { subscription } } = onAuthStateChange((user) => {
+      console.log('Auth state changed:', user ? 'User logged in' : 'User logged out');
       setUser(user);
-      setIsLoading(false);
+      // Add a longer delay to prevent flashing during auth state changes
+      setTimeout(() => {
+        setIsLoading(false);
+      }, 300);
     });
 
     return () => subscription.unsubscribe();

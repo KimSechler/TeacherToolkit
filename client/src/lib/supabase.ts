@@ -21,7 +21,10 @@ export const signInWithEmail = async (email: string, password: string) => {
 export const signUpWithEmail = async (email: string, password: string) => {
   const { data, error } = await supabase.auth.signUp({
     email,
-    password
+    password,
+    options: {
+      emailRedirectTo: `${window.location.origin}/auth/callback`
+    }
   })
   return { data, error }
 }
@@ -44,6 +47,14 @@ export const signOut = async () => {
 export const getCurrentUser = async () => {
   const { data: { user }, error } = await supabase.auth.getUser()
   return { user, error }
+}
+
+export const resendVerificationEmail = async (email: string) => {
+  const { data, error } = await supabase.auth.resend({
+    type: 'signup',
+    email: email
+  })
+  return { data, error }
 }
 
 export const onAuthStateChange = (callback: (user: any) => void) => {

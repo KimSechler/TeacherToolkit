@@ -2,7 +2,6 @@ import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import { setupSupabaseAuth, isAuthenticated } from "./supabaseAuth";
-import { setupGoogleAuth, isGoogleAuthAvailable } from "./googleAuth";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { setupWebSocket } from './ws';
@@ -26,12 +25,6 @@ app.use(session({
 }));
 
 setupSupabaseAuth(app);
-setupGoogleAuth(app);
-
-// Add route to check if Google OAuth is available
-app.get("/api/auth/google/available", (req, res) => {
-  res.json({ available: isGoogleAuthAvailable() });
-});
 
 app.use((req, res, next) => {
   const start = Date.now();

@@ -60,9 +60,9 @@ export function setupSupabaseAuth(app: Express) {
     res.status(401).json({ message: 'Not authenticated' });
   });
 
-  app.post('/api/logout', (req, res) => {
-    // For Supabase, logout is handled client-side
-    res.json({ success: true });
+  // Health check endpoint
+  app.get('/api/auth/health', (req, res) => {
+    res.json({ status: 'ok', message: 'Auth service is running' });
   });
 }
 

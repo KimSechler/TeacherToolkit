@@ -9,6 +9,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { lazy, Suspense } from "react";
 import { DebugBanner } from "@/components/debug-banner";
 import AttendanceTrackerSpace from "@/components/attendance-tracker-space";
+import AuthTransition from "@/components/auth-transition";
 
 // Lazy load pages for code splitting
 const Landing = lazy(() => import("@/pages/landing"));
@@ -33,9 +34,21 @@ loadCustomQuestions();
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
 
+  // Show loading screen while checking authentication
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-gray-600">Loading...</p>
@@ -43,13 +56,16 @@ function Router() {
       </div>
     }>
       <Switch>
-        {isLoading || !isAuthenticated ? (
+        {/* Always allow auth callback route - this prevents 404 during auth transitions */}
+        <Route path="/auth/callback" component={AuthCallback} />
+        
+        {!isAuthenticated ? (
           <>
             <Route path="/" component={Landing} />
             <Route path="/login" component={Login} />
             <Route path="/test-login" component={TestLogin} />
             <Route path="/join/:sessionCode?" component={JoinPage} />
-            <Route path="/auth/callback" component={AuthCallback} />
+            <Route component={NotFound} />
           </>
         ) : (
           <>
@@ -63,9 +79,9 @@ function Router() {
             <Route path="/question-bank" component={QuestionBank} />
             <Route path="/reports" component={Reports} />
             <Route path="/test" component={TestPage} />
+            <Route component={NotFound} />
           </>
         )}
-        <Route component={NotFound} />
       </Switch>
     </Suspense>
   );
@@ -78,7 +94,9 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <Toaster />
-          <Router />
+          <AuthTransition>
+            <Router />
+          </AuthTransition>
         </TooltipProvider>
       </QueryClientProvider>
     </ErrorBoundary>
