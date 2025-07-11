@@ -77,6 +77,8 @@ export default function AttendanceTrackerModern({
   const { data: students = [] as Student[], isLoading: studentsLoading } = useQuery<Student[]>({
     queryKey: ['/api/classes', classId, 'students'],
     enabled: !!classId,
+    retry: 3,
+    staleTime: 30000,
   });
 
   // Create or update attendance record
@@ -91,7 +93,8 @@ export default function AttendanceTrackerModern({
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/attendance'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/classes', classId, 'attendance'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/classes', classId, 'attendance', 'stats'] });
       toast({
         title: "Attendance Updated",
         description: "Student attendance has been recorded.",
@@ -161,6 +164,17 @@ export default function AttendanceTrackerModern({
     // Use larger size for students section, smaller for answer zones
     const isInStudentsSection = !attendanceData[studentName];
     return <SpaceAvatarComponent avatar={avatar} size={isInStudentsSection ? "lg" : "md"} />;
+  };
+
+  // Helper function to format student name for display (First Name + Last Initial)
+  const formatStudentName = (fullName: string) => {
+    const parts = fullName.split(' ');
+    if (parts.length >= 2) {
+      const firstName = parts[0];
+      const lastName = parts[parts.length - 1];
+      return `${firstName} ${lastName.charAt(0)}.`;
+    }
+    return fullName; // Fallback for single names
   };
 
   const playSound = (soundName: string) => {
@@ -520,7 +534,7 @@ export default function AttendanceTrackerModern({
                       } ${
                         selectedStudent === studentName ? 'bg-white/30 border-2 border-white' : ''
                       }`}>
-                        {studentName}
+                        {formatStudentName(studentName)}
                       </div>
                     </div>
                   ))}
@@ -563,7 +577,7 @@ export default function AttendanceTrackerModern({
                       } ${
                         isSelected ? 'bg-white/30 border-2 border-white' : ''
                       }`}>
-                        {studentName}
+                        {formatStudentName(studentName)}
                       </div>
                     </div>
                   );
@@ -604,7 +618,7 @@ export default function AttendanceTrackerModern({
                         } ${
                           isSelected ? 'bg-white/30 border-2 border-white' : ''
                         }`}>
-                          {studentName}
+                          {formatStudentName(studentName)}
                         </div>
                       </div>
                     );

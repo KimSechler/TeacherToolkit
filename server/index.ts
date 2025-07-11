@@ -1,10 +1,12 @@
+import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
-import { setupLocalAuth, isAuthenticated } from "./authLocal";
+import { setupSupabaseAuth, isAuthenticated } from "./supabaseAuth";
 import { setupGoogleAuth, isGoogleAuthAvailable } from "./googleAuth";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { setupWebSocket } from './ws';
+import { storage } from "./storage";
 
 const app = express();
 app.use(express.json());
@@ -22,7 +24,7 @@ app.use(session({
   }
 }));
 
-setupLocalAuth(app);
+setupSupabaseAuth(app);
 setupGoogleAuth(app);
 
 // Add route to check if Google OAuth is available
@@ -61,6 +63,13 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Test database connection on startup
+  try {
+    await storage.testDatabaseConnection();
+  } catch (error) {
+    console.error("Failed to test database connection:", error);
+  }
+
   const server = await registerRoutes(app, isAuthenticated);
 
   // Add this line to start WebSocket server

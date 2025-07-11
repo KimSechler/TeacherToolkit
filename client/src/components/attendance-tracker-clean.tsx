@@ -113,7 +113,8 @@ export default function AttendanceTrackerClean({
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/attendance'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/classes', classId, 'attendance'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/classes', classId, 'attendance', 'stats'] });
       toast({
         title: "🎉 Attendance Updated!",
         description: "Student attendance has been recorded!",

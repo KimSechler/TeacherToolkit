@@ -20,21 +20,13 @@ import { CalendarIcon, Users, TrendingUp, Download, Plus, BookOpen, Settings, Pi
 import { format } from "date-fns";
 import { getAllThemes, AttendanceTheme } from "@/lib/attendanceThemes";
 import { QuestionOfDay, getRandomQuestion } from "@/lib/questionLibrary";
+import { supabase } from "@/lib/supabase";
 
 export default function Attendance() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading } = useAuth();
   
-  // Get last selected class from localStorage or default to null
-  const getLastSelectedClass = (): number | null => {
-    if (typeof window !== 'undefined') {
-      const lastClass = localStorage.getItem('lastSelectedClass');
-      return lastClass ? parseInt(lastClass) : null;
-    }
-    return null;
-  };
-  
-  const [selectedClass, setSelectedClass] = useState<number | null>(getLastSelectedClass());
+  const [selectedClass, setSelectedClass] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState<QuestionOfDay | null>(null);
@@ -53,6 +45,37 @@ export default function Attendance() {
     cosmicParticlesEnabled: true,
   });
 
+  type Class = { id: number; name: string; grade?: string };
+  type AttendanceStats = { totalStudents: number; presentToday: number; attendanceRate: number; responses: number };
+
+  // Save selected class to localStorage whenever it changes
+  const handleClassChange = (classId: number) => {
+    setSelectedClass(classId);
+    localStorage.setItem('lastSelectedClass', classId.toString());
+  };
+
+  const { data: classes = [], isLoading: classesLoading } = useQuery<Class[]>({
+    queryKey: ["/api/classes"],
+    retry: false,
+  });
+
+  const { data: attendanceStats = { totalStudents: 0, presentToday: 0, attendanceRate: 0, responses: 0 }, isLoading: statsLoading, error: statsError } = useQuery<AttendanceStats>({
+    queryKey: ["/api/classes", selectedClass, "attendance", "stats", selectedDate.toISOString().split('T')[0]],
+    enabled: !!selectedClass,
+    retry: 3,
+    staleTime: 30000, // Cache for 30 seconds
+  });
+
+  // Initialize selected class from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const lastClass = localStorage.getItem('lastSelectedClass');
+      if (lastClass) {
+        setSelectedClass(parseInt(lastClass));
+      }
+    }
+  }, []);
+
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -68,24 +91,19 @@ export default function Attendance() {
     }
   }, [isAuthenticated, isLoading, toast]);
 
-  type Class = { id: number; name: string; grade?: string };
-  type AttendanceStats = { totalStudents: number; presentToday: number; attendanceRate: number; responses: number };
-
-  const { data: classes = [], isLoading: classesLoading } = useQuery<Class[]>({
-    queryKey: ["/api/classes"],
-    retry: false,
-  });
-
   // Set default class if none selected and classes are available
   useEffect(() => {
     if (classes.length > 0 && selectedClass === null) {
-      const lastClass = getLastSelectedClass();
-      console.log('Setting default class:', { lastClass, availableClasses: classes.map(c => c.id) });
+      // Get last class from localStorage
+      const lastClass = typeof window !== 'undefined' ? localStorage.getItem('lastSelectedClass') : null;
+      const lastClassId = lastClass ? parseInt(lastClass) : null;
       
-      if (lastClass && classes.some(cls => cls.id === lastClass)) {
+      console.log('Setting default class:', { lastClassId, availableClasses: classes.map(c => c.id) });
+      
+      if (lastClassId && classes.some(cls => cls.id === lastClassId)) {
         // Last class still exists, use it
-        console.log('Using last selected class:', lastClass);
-        handleClassChange(lastClass);
+        console.log('Using last selected class:', lastClassId);
+        handleClassChange(lastClassId);
       } else {
         // Last class doesn't exist or no last class, use first available
         console.log('Using first available class:', classes[0].id);
@@ -101,24 +119,6 @@ export default function Attendance() {
       handleClassChange(classes[0].id);
     }
   }, [classes, selectedClass]);
-
-  const { data: attendanceStats = { totalStudents: 0, presentToday: 0, attendanceRate: 0, responses: 0 } } = useQuery<AttendanceStats>({
-    queryKey: ["/api/classes", selectedClass, "attendance", "stats"],
-    enabled: !!selectedClass,
-  });
-
-  if (isLoading || !isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  const themes = getAllThemes();
 
   // Initialize with a random question if none selected
   useEffect(() => {
@@ -139,6 +139,30 @@ export default function Attendance() {
     }
   }, [currentQuestion]);
 
+  // Helper function to format student name for display (First Name + Last Initial)
+  const formatStudentName = (fullName: string) => {
+    const parts = fullName.split(' ');
+    if (parts.length >= 2) {
+      const firstName = parts[0];
+      const lastName = parts[parts.length - 1];
+      return `${firstName} ${lastName.charAt(0)}.`;
+    }
+    return fullName; // Fallback for single names
+  };
+
+  const themes = getAllThemes();
+
+  if (isLoading || !isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   const handleShuffleQuestion = () => {
     setCurrentQuestion(getRandomQuestion());
   };
@@ -158,12 +182,6 @@ export default function Attendance() {
 
   const handleCreateCustom = () => {
     setShowQuestionSelector(true);
-  };
-
-  // Save selected class to localStorage whenever it changes
-  const handleClassChange = (classId: number) => {
-    setSelectedClass(classId);
-    localStorage.setItem('lastSelectedClass', classId.toString());
   };
 
   return (
@@ -272,7 +290,11 @@ export default function Attendance() {
                     <div className="ml-3">
                       <p className="text-sm font-medium text-gray-600">Total Students</p>
                       <p className="text-2xl font-bold text-gray-800">
-                        {attendanceStats.totalStudents || 0}
+                        {statsLoading ? (
+                          <div className="animate-pulse bg-gray-200 h-8 w-12 rounded"></div>
+                        ) : (
+                          attendanceStats.totalStudents || 0
+                        )}
                       </p>
                     </div>
                   </div>
@@ -288,7 +310,11 @@ export default function Attendance() {
                     <div className="ml-3">
                       <p className="text-sm font-medium text-gray-600">Present Today</p>
                       <p className="text-2xl font-bold text-gray-800">
-                        {attendanceStats.presentToday || 0}
+                        {statsLoading ? (
+                          <div className="animate-pulse bg-gray-200 h-8 w-12 rounded"></div>
+                        ) : (
+                          attendanceStats.presentToday || 0
+                        )}
                       </p>
                     </div>
                   </div>
@@ -304,7 +330,11 @@ export default function Attendance() {
                     <div className="ml-3">
                       <p className="text-sm font-medium text-gray-600">Attendance Rate</p>
                       <p className="text-2xl font-bold text-gray-800">
-                        {attendanceStats.attendanceRate || 0}%
+                        {statsLoading ? (
+                          <div className="animate-pulse bg-gray-200 h-8 w-12 rounded"></div>
+                        ) : (
+                          `${attendanceStats.attendanceRate || 0}%`
+                        )}
                       </p>
                     </div>
                   </div>
@@ -320,13 +350,31 @@ export default function Attendance() {
                     <div className="ml-3">
                       <p className="text-sm font-medium text-gray-600">Responses</p>
                       <p className="text-2xl font-bold text-gray-800">
-                        {attendanceStats.responses || 0}
+                        {statsLoading ? (
+                          <div className="animate-pulse bg-gray-200 h-8 w-12 rounded"></div>
+                        ) : (
+                          attendanceStats.responses || 0
+                        )}
                       </p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             </div>
+          )}
+
+          {/* Error Display */}
+          {statsError && (
+            <Card className="mb-6 border-red-200 bg-red-50">
+              <CardContent className="p-4">
+                <div className="flex items-center text-red-700">
+                  <div className="w-5 h-5 bg-red-100 rounded-full flex items-center justify-center mr-3">
+                    <span className="text-red-600 text-sm">!</span>
+                  </div>
+                  <p className="text-sm">Failed to load attendance statistics. Please try refreshing the page.</p>
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* Question of the Day Section */}

@@ -79,10 +79,40 @@ export default function AttendanceTrackerSpace(props: any) {
   const [headerVisible, setHeaderVisible] = useState(false);
   const headerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Create or update attendance record
+  const attendanceMutation = useMutation({
+    mutationFn: async ({ studentId, status, notes }: { studentId: number; status: string; notes?: string }) => {
+      return apiRequest('POST', `/api/attendance`, {
+        studentId,
+        classId,
+        date: new Date().toISOString().split('T')[0],
+        status,
+        notes,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/classes', classId, 'attendance'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/classes', classId, 'attendance', 'stats'] });
+      toast({
+        title: "Attendance Updated",
+        description: "Student attendance has been recorded.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to update attendance. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Fetch students for the class
   const { data: students = [] as Student[], isLoading: studentsLoading } = useQuery<Student[]>({
     queryKey: ['/api/classes', classId, 'students'],
     enabled: !!classId,
+    retry: 3,
+    staleTime: 30000,
   });
 
   // Drag and drop handlers
@@ -97,6 +127,16 @@ export default function AttendanceTrackerSpace(props: any) {
     const studentName = e.dataTransfer.getData('text/plain');
     if (studentName) {
       setAttendanceData(prev => ({ ...prev, [studentName]: answer }));
+      
+      // Save attendance to database
+      const student = students.find((s: Student) => s.name === studentName);
+      if (student) {
+        attendanceMutation.mutate({
+          studentId: student.id,
+          status: 'present',
+          notes: answer
+        });
+      }
     }
     setSelectedStudent(null);
   };
@@ -115,6 +155,17 @@ export default function AttendanceTrackerSpace(props: any) {
     }
   };
   useEffect(() => () => { if (headerTimeoutRef.current) clearTimeout(headerTimeoutRef.current); }, []);
+
+  // Helper function to format student name for display (First Name + Last Initial)
+  const formatStudentName = (fullName: string) => {
+    const parts = fullName.split(' ');
+    if (parts.length >= 2) {
+      const firstName = parts[0];
+      const lastName = parts[parts.length - 1];
+      return `${firstName} ${lastName.charAt(0)}.`;
+    }
+    return fullName; // Fallback for single names
+  };
 
   // Layout
   return (
@@ -197,7 +248,7 @@ export default function AttendanceTrackerSpace(props: any) {
                   .map(([studentName]) => (
                     <div key={studentName} className="flex flex-col items-center mx-2">
                       <RocketSVG />
-                      <span className="text-cyan-100 text-lg font-medium mt-1" style={{ textShadow: '0 0 6px #00fff7' }}>{studentName}</span>
+                      <span className="text-cyan-100 text-lg font-medium mt-1" style={{ textShadow: '0 0 6px #00fff7' }}>{formatStudentName(studentName)}</span>
                     </div>
                   ))}
               </div>
@@ -218,7 +269,7 @@ export default function AttendanceTrackerSpace(props: any) {
               onDragEnd={handleDragEnd}
             >
               <RocketSVG />
-              <span className="text-cyan-100 text-lg font-medium mt-1" style={{ textShadow: '0 0 6px #00fff7' }}>{student.name}</span>
+              <span className="text-cyan-100 text-lg font-medium mt-1" style={{ textShadow: '0 0 6px #00fff7' }}>{formatStudentName(student.name)}</span>
             </div>
           ))}
         </div>

@@ -23,7 +23,7 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
   // Class routes
   app.get('/api/classes', isAuthenticated, async (req: any, res) => {
     try {
-      const teacherId = req.session.user.id;
+      const teacherId = req.supabaseUser.id;
       const classes = await storage.getClassesByTeacher(teacherId);
       res.json(classes);
     } catch (error) {
@@ -34,7 +34,7 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
 
   app.post('/api/classes', isAuthenticated, async (req: any, res) => {
     try {
-      const teacherId = req.session.user.id;
+      const teacherId = req.supabaseUser.id;
       const classData = insertClassSchema.parse({ ...req.body, teacherId });
       const newClass = await storage.createClass(classData);
       res.json(newClass);
@@ -91,6 +91,35 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
     }
   });
 
+  app.post('/api/classes/:classId/students/bulk', isAuthenticated, async (req: any, res) => {
+    try {
+      const classId = parseInt(req.params.classId);
+      const { students } = req.body;
+      
+      if (!Array.isArray(students)) {
+        return res.status(400).json({ message: "Students must be an array" });
+      }
+
+      const createdStudents = [];
+      for (const studentData of students) {
+        try {
+          const validatedData = insertStudentSchema.parse({ ...studentData, classId });
+          const newStudent = await storage.createStudent(validatedData);
+          createdStudents.push(newStudent);
+        } catch (error) {
+          console.error(`Error creating student ${studentData.name}:`, error);
+          // Continue with other students even if one fails
+        }
+      }
+
+      console.log(`Bulk imported ${createdStudents.length} students to class ${classId}`);
+      res.json(createdStudents);
+    } catch (error) {
+      console.error("Error bulk importing students:", error);
+      res.status(500).json({ message: "Failed to import students" });
+    }
+  });
+
   app.put('/api/students/:id', isAuthenticated, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -117,7 +146,7 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
   // Question routes
   app.get('/api/questions', isAuthenticated, async (req: any, res) => {
     try {
-      const teacherId = req.session.user.id;
+      const teacherId = req.supabaseUser.id;
       const type = req.query.type as string;
       const questions = type
         ? await storage.getQuestionsByType(teacherId, type)
@@ -131,7 +160,7 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
 
   app.post('/api/questions', isAuthenticated, async (req: any, res) => {
     try {
-      const teacherId = req.session.user.id;
+      const teacherId = req.supabaseUser.id;
       const questionData = insertQuestionSchema.parse({ ...req.body, teacherId });
       const newQuestion = await storage.createQuestion(questionData);
       res.json(newQuestion);
@@ -179,7 +208,29 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
 
   app.post('/api/attendance', isAuthenticated, async (req: any, res) => {
     try {
-      const recordData = insertAttendanceRecordSchema.parse(req.body);
+      // Handle both old format (status/notes) and new format (isPresent/answer)
+      let processedData;
+      
+      if (req.body.status !== undefined) {
+        // Old format: status/notes
+        processedData = {
+          studentId: req.body.studentId,
+          classId: req.body.classId,
+          date: new Date(req.body.date),
+          isPresent: req.body.status === 'present',
+          answer: req.body.notes || null,
+          questionId: req.body.questionId || null,
+        };
+      } else {
+        // New format: isPresent/answer
+        processedData = {
+          ...req.body,
+          date: new Date(req.body.date),
+          isPresent: Boolean(req.body.isPresent)
+        };
+      }
+      
+      const recordData = insertAttendanceRecordSchema.parse(processedData);
       const newRecord = await storage.createAttendanceRecord(recordData);
       res.json(newRecord);
     } catch (error) {
@@ -203,7 +254,7 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
   // Game routes
   app.get('/api/games', isAuthenticated, async (req: any, res) => {
     try {
-      const teacherId = req.session.user.id;
+      const teacherId = req.supabaseUser.id;
       const games = await storage.getGamesByTeacher(teacherId);
       res.json(games);
     } catch (error) {
@@ -214,7 +265,7 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
 
   app.post('/api/games', isAuthenticated, async (req: any, res) => {
     try {
-      const teacherId = req.session.user.id;
+      const teacherId = req.supabaseUser.id;
       const gameData = insertGameSchema.parse({ ...req.body, teacherId });
       const newGame = await storage.createGame(gameData);
       res.json(newGame);
@@ -329,7 +380,7 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
   // AI conversation routes
   app.get('/api/ai/conversations', isAuthenticated, async (req: any, res) => {
     try {
-      const teacherId = req.session.user.id;
+      const teacherId = req.supabaseUser.id;
       const conversations = await storage.getConversationsByTeacher(teacherId);
       res.json(conversations);
     } catch (error) {
@@ -340,7 +391,7 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
 
   app.post('/api/ai/conversations', isAuthenticated, async (req: any, res) => {
     try {
-      const teacherId = req.session.user.id;
+      const teacherId = req.supabaseUser.id;
       const conversationData = insertAiConversationSchema.parse({ ...req.body, teacherId });
       const newConversation = await storage.createConversation(conversationData);
       res.json(newConversation);
@@ -365,7 +416,7 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
   // Question usage tracking routes
   app.post('/api/question-usage', isAuthenticated, async (req: any, res) => {
     try {
-      const teacherId = req.session.user.id;
+      const teacherId = req.supabaseUser.id;
       const usageData = insertQuestionUsageSchema.parse({ ...req.body, teacherId });
       const newUsage = await storage.recordQuestionUsage(usageData);
       res.json(newUsage);
@@ -391,14 +442,28 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
   app.get('/api/classes/:classId/attendance/stats', isAuthenticated, async (req: any, res) => {
     try {
       const classId = parseInt(req.params.classId);
+      const date = req.query.date ? new Date(req.query.date as string) : new Date();
       const students = await storage.getStudentsByClass(classId);
+      
+      // Get actual attendance records for today
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      const attendanceRecords = await storage.getAttendanceByClassAndDate(classId, startOfDay);
+      
+      // Calculate real stats
+      const totalStudents = students.length;
+      const presentToday = attendanceRecords.filter(record => record.isPresent).length;
+      const attendanceRate = totalStudents > 0 ? Math.round((presentToday / totalStudents) * 100) : 0;
+      const responses = attendanceRecords.filter(record => record.answer && record.answer.trim() !== '').length;
 
-      // For demo purposes, return mock stats
       res.json({
-        totalStudents: students.length,
-        presentToday: Math.floor(students.length * 0.85), // 85% attendance
-        attendanceRate: 85,
-        responses: Math.floor(students.length * 0.75), // 75% responded to question
+        totalStudents,
+        presentToday,
+        attendanceRate,
+        responses,
       });
     } catch (error) {
       console.error("Error fetching attendance stats:", error);
@@ -476,7 +541,7 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
   // Save teacher settings
   app.post('/api/settings', isAuthenticated, async (req: any, res) => {
     try {
-      const teacherId = req.session.user.id;
+      const teacherId = req.supabaseUser.id;
       const settings = req.body;
       
       // In a real app, save to database
@@ -492,7 +557,7 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
   // Get teacher settings
   app.get('/api/settings', isAuthenticated, async (req: any, res) => {
     try {
-      const teacherId = req.session.user.id;
+      const teacherId = req.supabaseUser.id;
       
       // In a real app, get from database
       // const settings = await storage.getTeacherSettings(teacherId);
@@ -518,7 +583,7 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
   app.post('/api/attendance/session', isAuthenticated, async (req: any, res) => {
     try {
       const { classId, date, question, answers, attendanceData, settings, metadata } = req.body;
-      const teacherId = req.session.user.id;
+      const teacherId = req.supabaseUser.id;
       
       // In a real app, save comprehensive session data
       // await storage.saveAttendanceSession({
@@ -542,7 +607,7 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
   // Dashboard stats
   app.get('/api/dashboard/stats', isAuthenticated, async (req: any, res) => {
     try {
-      const teacherId = req.session.user.id;
+      const teacherId = req.supabaseUser.id;
       const classes = await storage.getClassesByTeacher(teacherId);
       const questions = await storage.getQuestionsByTeacher(teacherId);
       const games = await storage.getGamesByTeacher(teacherId);

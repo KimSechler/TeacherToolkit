@@ -129,9 +129,39 @@ export class DatabaseStorage implements IStorage {
   private static nextClassId = 3;
   private static nextStudentId = 13;
 
+  // Test database connection
+  async testDatabaseConnection(): Promise<boolean> {
+    try {
+      if (process.env.DATABASE_URL && db) {
+        // Try a simple query to test the connection
+        await db.select().from(classes).limit(1);
+        console.log("✅ Database connection test successful");
+        return true;
+      }
+      console.log("⚠️  No database URL configured, using mock data");
+      return false;
+    } catch (error) {
+      console.error("❌ Database connection test failed:", error);
+      return false;
+    }
+  }
+
   // User operations (required for Replit Auth)
   async getUser(id: string): Promise<User | undefined> {
-    // Return demo user for development
+    try {
+      // Try real database first
+      if (process.env.DATABASE_URL && db) {
+        const [user] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, id));
+        return user;
+      }
+    } catch (error) {
+      console.error("Database error in getUser:", error);
+    }
+    
+    // Fallback to mock data
     return {
       id: "1",
       email: "teacher@example.com",
@@ -144,6 +174,42 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
+    try {
+      // Try real database first
+      if (process.env.DATABASE_URL && db) {
+        const [existingUser] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, userData.id));
+
+        if (existingUser) {
+          const [updatedUser] = await db
+            .update(users)
+            .set({
+              email: userData.email,
+              firstName: userData.firstName,
+              lastName: userData.lastName,
+              profileImageUrl: userData.profileImageUrl,
+              updatedAt: new Date()
+            })
+            .where(eq(users.id, userData.id))
+            .returning();
+          console.log("User updated in database:", updatedUser);
+          return updatedUser;
+        } else {
+          const [newUser] = await db
+            .insert(users)
+            .values(userData)
+            .returning();
+          console.log("User created in database:", newUser);
+          return newUser;
+        }
+      }
+    } catch (error) {
+      console.error("Database error in upsertUser:", error);
+    }
+    
+    // Fallback to mock data
     return {
       id: userData.id || "1",
       email: userData.email || "teacher@example.com",
@@ -159,11 +225,13 @@ export class DatabaseStorage implements IStorage {
   async getClassesByTeacher(teacherId: string): Promise<Class[]> {
     try {
       // Try real database first
-      if (process.env.DATABASE_URL) {
+      if (process.env.DATABASE_URL && db) {
+        console.log("Fetching classes for teacher:", teacherId);
         const dbClasses = await db
           .select()
           .from(classes)
           .where(eq(classes.teacherId, teacherId));
+        console.log("Found classes in database:", dbClasses.length, dbClasses);
         return dbClasses.sort((a: Class, b: Class) => {
           const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
           const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -175,7 +243,9 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Fallback to mock data
+    console.log("Using mock data for classes, teacherId:", teacherId);
     const memoryClasses = DatabaseStorage.classes.filter(c => c.teacherId === teacherId);
+    console.log("Found classes in memory:", memoryClasses.length, memoryClasses);
     return memoryClasses;
   }
 
@@ -186,6 +256,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createClass(classData: InsertClass): Promise<Class> {
+    try {
+      // Try real database first
+      if (process.env.DATABASE_URL && db) {
+        console.log("Creating class in database with data:", classData);
+        const [newClass] = await db
+          .insert(classes)
+          .values(classData)
+          .returning();
+        console.log("Successfully created class in database:", newClass);
+        return newClass;
+      }
+    } catch (error) {
+      console.error("Database error, falling back to mock data:", error);
+    }
+    
+    // Fallback to mock data
+    console.log("Creating class in memory with data:", classData);
     const newClass = {
       id: DatabaseStorage.nextClassId++,
       name: classData.name,
@@ -200,6 +287,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateClass(id: number, classData: Partial<InsertClass>): Promise<Class> {
+    try {
+      // Try real database first
+      if (process.env.DATABASE_URL && db) {
+        const [updatedClass] = await db
+          .update(classes)
+          .set({ ...classData, updatedAt: new Date() })
+          .where(eq(classes.id, id))
+          .returning();
+        console.log("Updated class in database:", updatedClass);
+        return updatedClass;
+      }
+    } catch (error) {
+      console.error("Database error, falling back to mock data:", error);
+    }
+    
+    // Fallback to mock data
     const classIndex = DatabaseStorage.classes.findIndex(c => c.id === id);
     if (classIndex !== -1) {
       DatabaseStorage.classes[classIndex] = {
@@ -214,6 +317,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteClass(id: number): Promise<void> {
+    try {
+      // Try real database first
+      if (process.env.DATABASE_URL && db) {
+        // Delete all students in this class first (due to foreign key constraints)
+        await db.delete(students).where(eq(students.classId, id));
+        // Then delete the class
+        await db.delete(classes).where(eq(classes.id, id));
+        console.log("Deleted class from database:", id);
+        return;
+      }
+    } catch (error) {
+      console.error("Database error, falling back to mock data:", error);
+    }
+    
+    // Fallback to mock data
     const classIndex = DatabaseStorage.classes.findIndex(c => c.id === id);
     if (classIndex !== -1) {
       const deleted = DatabaseStorage.classes[classIndex];
@@ -255,6 +373,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createStudent(studentData: InsertStudent): Promise<Student> {
+    try {
+      // Try real database first
+      if (process.env.DATABASE_URL && db) {
+        const [newStudent] = await db
+          .insert(students)
+          .values(studentData)
+          .returning();
+        console.log("Created student in database:", newStudent);
+        return newStudent;
+      }
+    } catch (error) {
+      console.error("Database error, falling back to mock data:", error);
+    }
+    
+    // Fallback to mock data
     const newStudent = {
       id: DatabaseStorage.nextStudentId++,
       name: studentData.name,
@@ -268,6 +401,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateStudent(id: number, studentData: Partial<InsertStudent>): Promise<Student> {
+    try {
+      // Try real database first
+      if (process.env.DATABASE_URL && db) {
+        const [updatedStudent] = await db
+          .update(students)
+          .set(studentData)
+          .where(eq(students.id, id))
+          .returning();
+        console.log("Updated student in database:", updatedStudent);
+        return updatedStudent;
+      }
+    } catch (error) {
+      console.error("Database error, falling back to mock data:", error);
+    }
+    
+    // Fallback to mock data
     const studentIndex = DatabaseStorage.students.findIndex(s => s.id === id);
     if (studentIndex !== -1) {
       DatabaseStorage.students[studentIndex] = {
@@ -281,6 +430,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteStudent(id: number): Promise<void> {
+    try {
+      // Try real database first
+      if (process.env.DATABASE_URL && db) {
+        await db.delete(students).where(eq(students.id, id));
+        console.log("Deleted student from database:", id);
+        return;
+      }
+    } catch (error) {
+      console.error("Database error, falling back to mock data:", error);
+    }
+    
+    // Fallback to mock data
     const studentIndex = DatabaseStorage.students.findIndex(s => s.id === id);
     if (studentIndex !== -1) {
       const deleted = DatabaseStorage.students[studentIndex];
@@ -392,8 +553,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createAttendanceRecord(recordData: InsertAttendanceRecord): Promise<AttendanceRecord> {
-    const [record] = await db.insert(attendanceRecords).values(recordData).returning();
-    return record;
+    try {
+      // Try real database first
+      if (process.env.DATABASE_URL) {
+        const [record] = await db.insert(attendanceRecords).values(recordData).returning();
+        return record;
+      }
+    } catch (error) {
+      console.error("Database error, falling back to mock data:", error);
+    }
+    
+    // Fallback to mock data
+    const mockRecord: AttendanceRecord = {
+      id: Math.floor(Math.random() * 10000) + 1,
+      studentId: recordData.studentId,
+      classId: recordData.classId,
+      date: recordData.date,
+      isPresent: recordData.isPresent,
+      questionId: recordData.questionId || null,
+      answer: recordData.answer || null,
+      createdAt: new Date()
+    };
+    
+    console.log("Created attendance record in memory:", mockRecord);
+    return mockRecord;
   }
 
   async updateAttendanceRecord(
@@ -421,7 +604,7 @@ export class DatabaseStorage implements IStorage {
   // Game operations
   async getGamesByTeacher(teacherId: string): Promise<Game[]> {
     try {
-      return await db.select().from(games).where({ teacherId });
+      return await db.select().from(games).where(eq(games.teacherId, teacherId));
     } catch (error) {
       console.error("Error fetching games:", error);
       // Return demo games for development

@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -26,7 +27,9 @@ import {
   BarChart3,
   Calendar,
   Clock,
-  Star
+  Star,
+  Upload,
+  FileText
 } from "lucide-react";
 
 const classSchema = z.object({
@@ -39,8 +42,13 @@ const studentSchema = z.object({
   avatarUrl: z.string().optional(),
 });
 
+const importSchema = z.object({
+  studentList: z.string().min(1, "Please provide student names"),
+});
+
 type ClassFormData = z.infer<typeof classSchema>;
 type StudentFormData = z.infer<typeof studentSchema>;
+type ImportFormData = z.infer<typeof importSchema>;
 
 export default function Classes() {
   const { toast } = useToast();
@@ -51,6 +59,14 @@ export default function Classes() {
   const [isAddingStudent, setIsAddingStudent] = useState(false);
   const [editingClass, setEditingClass] = useState<any>(null);
   const [editingStudent, setEditingStudent] = useState<any>(null);
+  const [isImportingStudents, setIsImportingStudents] = useState(false);
+  const [importedStudents, setImportedStudents] = useState<any[]>([]);
+  const [importedFile, setImportedFile] = useState<File | null>(null);
+
+  // Simple import state
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importPreview, setImportPreview] = useState<string[]>([]);
 
   const classForm = useForm<ClassFormData>({
     resolver: zodResolver(classSchema),
@@ -65,6 +81,13 @@ export default function Classes() {
     defaultValues: {
       name: "",
       avatarUrl: "",
+    },
+  });
+
+  const importForm = useForm<ImportFormData>({
+    resolver: zodResolver(importSchema),
+    defaultValues: {
+      studentList: "",
     },
   });
 
@@ -86,29 +109,38 @@ export default function Classes() {
   type Class = { id: number; name: string; grade?: string };
   type Student = { id: number; name: string; avatarUrl?: string };
 
-  const { data: classes = [], isLoading: classesLoading } = useQuery<Class[]>({
+  const { data: classes = [], isLoading: classesLoading, error: classesError } = useQuery<Class[]>({
     queryKey: ["/api/classes"],
     retry: false,
     refetchOnWindowFocus: true,
+    enabled: !!user?.id, // Only fetch when user is authenticated
   });
 
-  const { data: students = [], isLoading: studentsLoading } = useQuery<Student[]>({
+  // Auto-select first class when classes are loaded
+  useEffect(() => {
+    if (classes && classes.length > 0 && !selectedClass) {
+      setSelectedClass(classes[0]);
+    }
+  }, [classes, selectedClass]);
+
+  const { data: students = [], isLoading: studentsLoading, error: studentsError } = useQuery<Student[]>({
     queryKey: ["/api/classes", selectedClass?.id, "students"],
-    enabled: !!selectedClass,
+    enabled: !!selectedClass && !!user?.id,
     refetchOnWindowFocus: true,
   });
 
   const createClassMutation = useMutation({
     mutationFn: async (data: ClassFormData) => {
+      if (!user?.id) {
+        throw new Error("User not authenticated");
+      }
       const classData = {
         ...data,
-        teacherId: user?.id || "1" // Use the actual user ID from auth
+        teacherId: user.id
       };
-      console.log("Creating class with data:", classData);
       return await apiRequest("POST", "/api/classes", classData);
     },
     onSuccess: (newClass) => {
-      console.log("Class created successfully:", newClass);
       queryClient.invalidateQueries({ queryKey: ["/api/classes"] });
       toast({
         title: "Success",
@@ -122,16 +154,16 @@ export default function Classes() {
         const classes = queryClient.getQueryData(["/api/classes"]) as Class[];
         if (classes && classes.length > 0) {
           const newestClass = classes[classes.length - 1];
-          console.log("Selecting newest class:", newestClass);
           setSelectedClass(newestClass);
         }
       }, 100);
     },
     onError: (error) => {
       console.error("Error creating class:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to create class";
       toast({
         title: "Error",
-        description: "Failed to create class",
+        description: errorMessage,
         variant: "destructive",
       });
     },
@@ -185,11 +217,9 @@ export default function Classes() {
         ...data,
         classId: selectedClass.id
       };
-      console.log("Adding student with data:", studentData);
       return await apiRequest("POST", `/api/classes/${selectedClass.id}/students`, studentData);
     },
     onSuccess: (newStudent) => {
-      console.log("Student added successfully:", newStudent);
       queryClient.invalidateQueries({ queryKey: ["/api/classes", selectedClass?.id, "students"] });
       toast({
         title: "Success",
@@ -201,9 +231,10 @@ export default function Classes() {
     },
     onError: (error) => {
       console.error("Error adding student:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to add student";
       toast({
         title: "Error",
-        description: "Failed to add student",
+        description: errorMessage,
         variant: "destructive",
       });
     },
@@ -247,6 +278,35 @@ export default function Classes() {
       toast({
         title: "Error",
         description: "Failed to delete student",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const bulkImportStudentsMutation = useMutation({
+    mutationFn: async (students: { name: string; classId: number }[]) => {
+      if (!selectedClass) {
+        throw new Error("No class selected");
+      }
+      return await apiRequest("POST", `/api/classes/${selectedClass.id}/students/bulk`, { students });
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/classes", selectedClass?.id, "students"] });
+      toast({
+        title: "Success",
+        description: `Students imported successfully`,
+      });
+      setIsImportingStudents(false);
+      setImportedStudents([]);
+      setImportedFile(null);
+      importForm.reset();
+    },
+    onError: (error) => {
+      console.error("Error importing students:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to import students";
+      toast({
+        title: "Error",
+        description: errorMessage,
         variant: "destructive",
       });
     },
@@ -307,7 +367,124 @@ export default function Classes() {
   };
 
   const getInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').toUpperCase();
+    const parts = name.split(' ');
+    if (parts.length >= 2) {
+      // Show First Name and first initial of Last Name
+      return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+    }
+    return name;
+  };
+
+  // Helper functions for importing students
+  const parseCSV = (csvText: string): string[] => {
+    const lines = csvText.trim().split('\n');
+    const students: string[] = [];
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (trimmedLine) {
+        // Handle CSV format: "First Name,Last Name" or just "Name"
+        const parts = trimmedLine.split(',').map(part => part.trim().replace(/"/g, ''));
+        if (parts.length >= 2) {
+          students.push(`${parts[0]} ${parts[1]}`);
+        } else if (parts.length === 1) {
+          students.push(parts[0]);
+        }
+      }
+    }
+    
+    return students.filter(name => name.length > 0);
+  };
+
+  const parseTextList = (text: string): string[] => {
+    const lines = text.trim().split('\n');
+    return lines
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
+  };
+
+  const handleFileUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const students = parseCSV(text);
+      setImportedStudents(students.map(name => ({ name })));
+      setImportedFile(file);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleTextPaste = (text: string) => {
+    const students = parseTextList(text);
+    setImportedStudents(students.map(name => ({ name })));
+  };
+
+  const handleImportStudents = () => {
+    if (importedStudents.length === 0) {
+      toast({
+        title: "Error",
+        description: "No students to import",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const students = importedStudents.map(student => ({
+      name: student.name,
+      classId: selectedClass.id
+    }));
+
+    bulkImportStudentsMutation.mutate(students);
+  };
+
+  // Simple import functions
+  const handleImportText = () => {
+    if (!importText.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter student names",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Parse text - one name per line or comma separated
+    const names = importText
+      .split(/[\n,]/)
+      .map(name => name.trim())
+      .filter(name => name.length > 0);
+
+    if (names.length === 0) {
+      toast({
+        title: "Error",
+        description: "No valid names found",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setImportPreview(names);
+  };
+
+  const handleImportConfirm = () => {
+    if (importPreview.length === 0) {
+      toast({
+        title: "Error",
+        description: "No students to import",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const students = importPreview.map(name => ({
+      name: name,
+      classId: selectedClass.id
+    }));
+
+    bulkImportStudentsMutation.mutate(students);
+    setShowImportDialog(false);
+    setImportText("");
+    setImportPreview([]);
   };
 
   if (isLoading || !isAuthenticated) {
@@ -315,7 +492,17 @@ export default function Classes() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
+          <p className="text-gray-600">
+            {isLoading ? "Loading..." : "Please log in to access your classes"}
+          </p>
+          {!isLoading && !isAuthenticated && (
+            <Button 
+              className="mt-4"
+              onClick={() => window.location.href = "/api/login"}
+            >
+              Log In
+            </Button>
+          )}
         </div>
       </div>
     );
@@ -333,17 +520,29 @@ export default function Classes() {
                 <h1 className="text-2xl font-bold text-gray-800 mb-2">My Classes</h1>
                 <p className="text-gray-600">Manage your students and class information</p>
               </div>
-              <Button
-                onClick={() => {
-                  setEditingClass(null);
-                  classForm.reset();
-                  setIsCreatingClass(true);
-                }}
-                className="bg-primary hover:bg-primary/90"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                New Class
-              </Button>
+              <div className="flex space-x-2">
+                <Button
+                  onClick={() => {
+                    setEditingClass(null);
+                    classForm.reset();
+                    setIsCreatingClass(true);
+                  }}
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Class
+                </Button>
+                {/* Simple Import Button */}
+                <Button
+                  onClick={() => setShowImportDialog(true)}
+                  variant="outline"
+                  disabled={!selectedClass}
+                  className="ml-2"
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Import Students
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -365,6 +564,19 @@ export default function Classes() {
                           <div className="h-16 bg-gray-200 rounded-lg"></div>
                         </div>
                       ))}
+                    </div>
+                  ) : classesError ? (
+                    <div className="text-center py-8">
+                      <div className="text-red-500 mb-4">
+                        <Users className="w-12 h-12 mx-auto mb-2" />
+                        <p className="text-sm">Failed to load classes</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/classes"] })}
+                      >
+                        Try Again
+                      </Button>
                     </div>
                   ) : classes && classes.length > 0 ? (
                     <div className="space-y-3">
@@ -484,17 +696,30 @@ export default function Classes() {
                               </div>
                             ))}
                           </div>
+                        ) : studentsError ? (
+                          <div className="text-center py-8">
+                            <div className="text-red-500 mb-4">
+                              <UserPlus className="w-12 h-12 mx-auto mb-2" />
+                              <p className="text-sm">Failed to load students</p>
+                            </div>
+                            <Button
+                              variant="outline"
+                              onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/classes", selectedClass?.id, "students"] })}
+                            >
+                              Try Again
+                            </Button>
+                          </div>
                         ) : students && students.length > 0 ? (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {students.map((student: any, index: number) => (
                               <div key={student.id} className="flex items-center p-3 border rounded-lg hover:shadow-md transition-shadow">
                                 <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                                   <span className="text-sm font-medium text-blue-600">
-                                    {getInitials(student.name)}
+                                    {student.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()}
                                   </span>
                                 </div>
                                 <div className="ml-3 flex-1">
-                                  <p className="text-sm font-medium text-gray-800">{student.name}</p>
+                                  <p className="text-sm font-medium text-gray-800">{getInitials(student.name)}</p>
                                   <div className="flex items-center space-x-1 mt-1">
                                     <Badge variant="outline" className="text-xs">
                                       Present
@@ -750,6 +975,116 @@ export default function Classes() {
                   </div>
                 </form>
               </Form>
+            </DialogContent>
+          </Dialog>
+
+          {/* Import Students Dialog */}
+          <Dialog open={isImportingStudents} onOpenChange={(open) => {
+            setIsImportingStudents(open);
+            if (!open) {
+              setImportedStudents([]);
+              setImportedFile(null);
+              importForm.reset();
+            }
+          }}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Import Student List</DialogTitle>
+              </DialogHeader>
+              
+              <div className="space-y-4">
+                <p>Import dialog is working!</p>
+                <p>Selected class: {selectedClass?.name}</p>
+                <p>Dialog state: {isImportingStudents ? 'open' : 'closed'}</p>
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsImportingStudents(false);
+                    setImportedStudents([]);
+                    setImportedFile(null);
+                    importForm.reset();
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Simple Import Dialog */}
+          <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Import Students</DialogTitle>
+              </DialogHeader>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">
+                    Enter student names (one per line or comma separated)
+                  </label>
+                  <Textarea
+                    value={importText}
+                    onChange={(e) => setImportText(e.target.value)}
+                    placeholder="John Smith&#10;Jane Doe&#10;Mike Johnson"
+                    rows={6}
+                    className="w-full"
+                  />
+                </div>
+
+                {importPreview.length > 0 && (
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-2 block">
+                      Preview ({importPreview.length} students)
+                    </label>
+                    <div className="max-h-32 overflow-y-auto border rounded p-2 bg-gray-50">
+                      {importPreview.map((name, index) => (
+                        <div key={index} className="text-sm text-gray-600 py-1">
+                          {name}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowImportDialog(false);
+                    setImportText("");
+                    setImportPreview([]);
+                  }}
+                >
+                  Cancel
+                </Button>
+                {importPreview.length === 0 ? (
+                  <Button
+                    type="button"
+                    onClick={handleImportText}
+                    disabled={!importText.trim()}
+                  >
+                    Preview
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    onClick={handleImportConfirm}
+                    disabled={bulkImportStudentsMutation.isPending}
+                  >
+                    {bulkImportStudentsMutation.isPending ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    ) : null}
+                    Import {importPreview.length} Students
+                  </Button>
+                )}
+              </div>
             </DialogContent>
           </Dialog>
         </main>
