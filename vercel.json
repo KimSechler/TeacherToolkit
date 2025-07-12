@@ -20,10 +20,12 @@
     {
       "source": "/api/(.*)",
       "destination": "api/index.ts"
-    },
+    }
+  ],
+  "routes": [
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "src": "/(.*)",
+      "dest": "client/dist/public/index.html"
     }
   ],
   "env": {
