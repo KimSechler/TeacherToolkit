@@ -2,7 +2,6 @@ import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import { setupSupabaseAuth, isAuthenticated } from "../server/supabaseAuth";
-import { setupGoogleAuth, isGoogleAuthAvailable } from "../server/googleAuth";
 import { registerRoutes } from "../server/routes";
 import { storage } from "../server/storage";
 import { db } from "../server/db";
@@ -23,13 +22,8 @@ app.use(session({
   }
 }));
 
+// Only setup Supabase auth for production
 setupSupabaseAuth(app);
-setupGoogleAuth(app);
-
-// Add route to check if Google OAuth is available
-app.get("/api/auth/google/available", (req, res) => {
-  res.json({ available: isGoogleAuthAvailable() });
-});
 
 app.use((req, res, next) => {
   const start = Date.now();
