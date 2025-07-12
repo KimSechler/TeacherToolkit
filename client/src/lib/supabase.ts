@@ -1,13 +1,20 @@
 import { createClient } from '@supabase/supabase-js'
+import { config } from './config'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabaseUrl = config.supabase.url
+const supabaseAnonKey = config.supabase.anonKey
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables')
+  throw new Error('Missing Supabase environment variables. Please check your VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY configuration.')
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
+})
 
 // Auth helper functions
 export const signInWithEmail = async (email: string, password: string) => {

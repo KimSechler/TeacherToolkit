@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { getVisualElements, type QuestionOfDay, getRandomQuestion, getQuestionById } from "@/lib/questionLibrary";
 import { ArrowLeft } from "lucide-react";
 import { useRoute } from "wouter";
+import { useAttendanceRealtime } from "@/hooks/useSupabaseRealtime";
 
 // Placeholder SVG components for rockets/astronauts
 const RocketSVG = () => (
@@ -79,33 +79,38 @@ export default function AttendanceTrackerSpace(props: any) {
   const [headerVisible, setHeaderVisible] = useState(false);
   const headerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Create or update attendance record
-  const attendanceMutation = useMutation({
-    mutationFn: async ({ studentId, status, notes }: { studentId: number; status: string; notes?: string }) => {
-      return apiRequest('POST', `/api/attendance`, {
-        studentId,
-        classId,
-        date: new Date().toISOString().split('T')[0],
-        status,
-        notes,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/classes', classId, 'attendance'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/classes', classId, 'attendance', 'stats'] });
+  // Use Supabase real-time for attendance
+  const { connected, attendanceUpdates, markAttendance } = useAttendanceRealtime(classId);
+
+  // Handle real-time attendance updates
+  useEffect(() => {
+    attendanceUpdates.forEach(update => {
+      if (update.eventType === 'INSERT' && update.new) {
+        const { student_id, status, notes } = update.new;
+        // Find student name by ID
+        const student = students.find(s => s.id === student_id);
+        if (student && notes) {
+          setAttendanceData(prev => ({ ...prev, [student.name]: notes }));
+        }
+      }
+    });
+  }, [attendanceUpdates]);
+
+  // Show connection status
+  useEffect(() => {
+    if (!connected) {
       toast({
-        title: "Attendance Updated",
-        description: "Student attendance has been recorded.",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: "Failed to update attendance. Please try again.",
+        title: "Connection Lost",
+        description: "Real-time connection lost. Attendance updates may be delayed.",
         variant: "destructive",
       });
-    },
-  });
+    } else {
+      toast({
+        title: "Connected",
+        description: "Real-time attendance tracking is active.",
+      });
+    }
+  }, [connected, toast]);
 
   // Fetch students for the class
   const { data: students = [] as Student[], isLoading: studentsLoading } = useQuery<Student[]>({
@@ -121,25 +126,36 @@ export default function AttendanceTrackerSpace(props: any) {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', studentName);
   };
+  
   const handleDragEnd = () => setSelectedStudent(null);
-  const handleDrop = (e: React.DragEvent, answer: string) => {
+  
+  const handleDrop = async (e: React.DragEvent, answer: string) => {
     e.preventDefault();
     const studentName = e.dataTransfer.getData('text/plain');
     if (studentName) {
       setAttendanceData(prev => ({ ...prev, [studentName]: answer }));
       
-      // Save attendance to database
+      // Save attendance using Supabase real-time
       const student = students.find((s: Student) => s.name === studentName);
       if (student) {
-        attendanceMutation.mutate({
-          studentId: student.id,
-          status: 'present',
-          notes: answer
-        });
+        try {
+          await markAttendance(student.id, 'present', new Date());
+          toast({
+            title: "Attendance Updated",
+            description: "Student attendance has been recorded.",
+          });
+        } catch (error) {
+          toast({
+            title: "Error",
+            description: "Failed to update attendance. Please try again.",
+            variant: "destructive",
+          });
+        }
       }
     }
     setSelectedStudent(null);
   };
+  
   const handleDragOver = (e: React.DragEvent) => e.preventDefault();
 
   // Auto-hiding header logic
@@ -154,6 +170,7 @@ export default function AttendanceTrackerSpace(props: any) {
       headerTimeoutRef.current = setTimeout(() => setHeaderVisible(false), 2000);
     }
   };
+  
   useEffect(() => () => { if (headerTimeoutRef.current) clearTimeout(headerTimeoutRef.current); }, []);
 
   // Helper function to format student name for display (First Name + Last Initial)
@@ -204,6 +221,13 @@ export default function AttendanceTrackerSpace(props: any) {
                     style={{ width: `${(Object.keys(attendanceData).length / students.length) * 100}%` }}
                   ></div>
                 </div>
+              </div>
+              {/* Connection Status */}
+              <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${connected ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                <span className="text-sm text-cyan-200">
+                  {connected ? 'Connected' : 'Disconnected'}
+                </span>
               </div>
             </div>
             <div className="flex gap-2">

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useGameSessionRealtime } from '../hooks/useSupabaseRealtime';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -42,7 +42,7 @@ export default function MagicWordHunt({ sessionId, userId, isTeacher }: MagicWor
   const [selectedLetter, setSelectedLetter] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const { connected, messages, send } = useWebSocket(sessionId, userId);
+  const { connected, gameUpdates, updateGameState } = useGameSessionRealtime(sessionId);
 
   // Initialize audio
   useEffect(() => {
@@ -50,24 +50,16 @@ export default function MagicWordHunt({ sessionId, userId, isTeacher }: MagicWor
     audioRef.current.volume = 0.3;
   }, []);
 
-  // Handle incoming messages
+  // Handle incoming game updates
   useEffect(() => {
-    messages.forEach(msg => {
-      if (msg.type === 'state_update' && msg.state) {
-        setGameState(msg.state);
-      } else if (msg.type === 'participant_joined') {
-        setGameState(prev => ({
-          ...prev,
-          participants: [...prev.participants, msg.userId]
-        }));
-      } else if (msg.type === 'participant_left') {
-        setGameState(prev => ({
-          ...prev,
-          participants: prev.participants.filter(p => p !== msg.userId)
-        }));
+    gameUpdates.forEach(update => {
+      if (update.eventType === 'INSERT' && update.new?.gameState) {
+        setGameState(update.new.gameState);
+      } else if (update.eventType === 'UPDATE' && update.new?.gameState) {
+        setGameState(update.new.gameState);
       }
     });
-  }, [messages]);
+  }, [gameUpdates]);
 
   const playSound = (type: 'success' | 'discovery' | 'magic') => {
     if (!soundEnabled || !audioRef.current) return;
@@ -82,7 +74,7 @@ export default function MagicWordHunt({ sessionId, userId, isTeacher }: MagicWor
     audioRef.current.play().catch(() => {});
   };
 
-  const startGame = () => {
+  const startGame = async () => {
     const newWord = KINDERGARTEN_WORDS[Math.floor(Math.random() * KINDERGARTEN_WORDS.length)];
     const newState: GameState = {
       currentWord: newWord,
@@ -93,17 +85,22 @@ export default function MagicWordHunt({ sessionId, userId, isTeacher }: MagicWor
       timeLeft: 60
     };
     
-    send({ type: 'state_update', sessionId, state: newState });
+    await updateGameState({
+      sessionId,
+      gameState: newState,
+      status: 'playing',
+      updatedAt: new Date().toISOString()
+    });
     playSound('magic');
   };
 
-  const selectLetter = (letter: string) => {
+  const selectLetter = async (letter: string) => {
     if (gameState.gamePhase !== 'playing') return;
     
     setSelectedLetter(letter);
     playSound('discovery');
     
-    setTimeout(() => {
+    setTimeout(async () => {
       setSelectedLetter(null);
       
       if (gameState.currentWord.includes(letter) && !gameState.discoveredLetters.includes(letter)) {
@@ -117,14 +114,24 @@ export default function MagicWordHunt({ sessionId, userId, isTeacher }: MagicWor
           score: newScore
         };
         
-        send({ type: 'state_update', sessionId, state: newState });
+        await updateGameState({
+          sessionId,
+          gameState: newState,
+          status: 'playing',
+          updatedAt: new Date().toISOString()
+        });
         playSound('success');
         
         // Check if word is complete
         if (newDiscovered.length === new Set(gameState.currentWord.split('')).size) {
-          setTimeout(() => {
+          setTimeout(async () => {
             const finishedState = { ...newState, gamePhase: 'finished' as const };
-            send({ type: 'state_update', sessionId, state: finishedState });
+            await updateGameState({
+              sessionId,
+              gameState: finishedState,
+              status: 'finished',
+              updatedAt: new Date().toISOString()
+            });
             playSound('magic');
           }, 1000);
         }

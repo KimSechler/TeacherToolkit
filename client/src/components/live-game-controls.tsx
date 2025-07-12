@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useGameSessionRealtime } from '../hooks/useSupabaseRealtime';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -12,17 +12,34 @@ export default function LiveGameControls({ userId, isTeacher, initialSessionCode
   const [joinCode, setJoinCode] = useState(initialSessionCode || '');
   const [showQR, setShowQR] = useState(false);
   const [copied, setCopied] = useState(false);
-  const { connected, messages, send } = useWebSocket(sessionId, userId);
+  const { connected, gameUpdates, updateGameState } = useGameSessionRealtime(sessionId);
 
-  const startSession = () => {
+  const startSession = async () => {
     const code = Math.random().toString(36).slice(2, 8).toUpperCase();
     setSessionId(code);
-    send({ type: 'host', sessionId: code, userId });
+    
+    // Initialize game session in Supabase
+    await updateGameState({
+      sessionId: code,
+      hostId: userId,
+      participants: [userId],
+      status: 'active',
+      gameType: 'magic-word-hunt',
+      createdAt: new Date().toISOString()
+    });
   };
 
-  const joinSession = () => {
-    setSessionId(joinCode.toUpperCase());
-    send({ type: 'join', sessionId: joinCode.toUpperCase(), userId });
+  const joinSession = async () => {
+    const sessionCode = joinCode.toUpperCase();
+    setSessionId(sessionCode);
+    
+    // Join existing session
+    await updateGameState({
+      sessionId: sessionCode,
+      participants: [userId],
+      status: 'joined',
+      joinedAt: new Date().toISOString()
+    });
   };
 
   const copyToClipboard = async () => {
@@ -48,6 +65,11 @@ export default function LiveGameControls({ userId, isTeacher, initialSessionCode
     const joinUrl = `${window.location.origin}/join/${sessionId}`;
     return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(joinUrl)}`;
   };
+
+  // Count participants from game updates
+  const participantCount = gameUpdates.filter(update => 
+    update.eventType === 'INSERT' && update.new?.status === 'joined'
+  ).length + 1;
 
   if (sessionId) {
     return (
@@ -76,7 +98,7 @@ export default function LiveGameControls({ userId, isTeacher, initialSessionCode
                   <div className="flex items-center space-x-1">
                     <Users className="w-4 h-4" />
                     <span className="text-sm">
-                      {messages.filter(m => m.type === 'participant_joined').length + 1}
+                      {participantCount}
                     </span>
                   </div>
                 </div>
