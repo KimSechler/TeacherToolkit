@@ -5,10 +5,14 @@ const supabaseUrl = config.supabase.url
 const supabaseAnonKey = config.supabase.anonKey
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables. Please check your VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY configuration.')
+  console.error('Missing Supabase environment variables. Please check your VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY configuration.');
+  // Don't throw in production, create a mock client
+  if (import.meta.env.VITE_NODE_ENV === 'development') {
+    throw new Error('Missing Supabase environment variables. Please check your VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY configuration.')
+  }
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseAnonKey || 'placeholder-key', {
   realtime: {
     params: {
       eventsPerSecond: 10,

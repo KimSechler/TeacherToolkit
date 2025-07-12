@@ -79,13 +79,6 @@ export default function Landing() {
               >
                 Get Started
               </Button>
-              <Button 
-                onClick={() => window.location.href = '/api/auth/google'}
-                variant="outline"
-                className="border-blue-500 text-blue-600 hover:bg-blue-50"
-              >
-                Test Google OAuth
-              </Button>
             </div>
           </div>
         </div>

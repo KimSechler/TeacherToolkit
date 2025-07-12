@@ -14,15 +14,6 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Simple Google OAuth availability check
-app.get("/api/auth/google/available", (req, res) => {
-  const hasGoogleConfig = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
-  res.json({ 
-    available: hasGoogleConfig,
-    configured: hasGoogleConfig
-  });
-});
-
 // Database connection test
 app.get("/api/db/test", async (req, res) => {
   try {
@@ -47,7 +38,6 @@ app.get("/api/env/check", (req, res) => {
     VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL ? 'SET' : 'NOT_SET',
     VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY ? 'SET' : 'NOT_SET',
     SESSION_SECRET: process.env.SESSION_SECRET ? 'SET' : 'NOT_SET',
-    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ? 'SET' : 'NOT_SET',
   };
   
   res.json({ 

@@ -36,7 +36,10 @@ export function validateConfig() {
   
   if (missing.length > 0) {
     console.error('Missing required environment variables:', missing);
-    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+    // Don't throw error in production, just log it
+    if (import.meta.env.VITE_NODE_ENV === 'development') {
+      throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+    }
   }
 }
 
