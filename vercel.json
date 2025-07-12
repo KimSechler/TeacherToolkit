@@ -3,16 +3,13 @@
   "builds": [
     {
       "src": "api/index.ts",
-      "use": "@vercel/node",
-      "config": {
-        "maxDuration": 10
-      }
+      "use": "@vercel/node"
     },
     {
       "src": "client/package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "dist/public"
+        "distDir": "client/dist/public"
       }
     }
   ],
@@ -23,7 +20,7 @@
     },
     {
       "src": "/(.*)",
-      "dest": "dist/public/$1"
+      "dest": "client/dist/public/$1"
     }
   ],
   "env": {
