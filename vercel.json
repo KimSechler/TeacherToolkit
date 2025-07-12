@@ -16,22 +16,14 @@
       }
     }
   ],
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "api/index.ts"
+      "source": "/api/(.*)",
+      "destination": "api/index.ts"
     },
     {
-      "src": "/assets/(.*)",
-      "dest": "client/dist/public/assets/$1"
-    },
-    {
-      "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json))",
-      "dest": "client/dist/public/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "client/dist/public/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ],
   "env": {
