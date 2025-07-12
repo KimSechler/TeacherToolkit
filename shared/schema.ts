@@ -361,7 +361,6 @@ export const insertGameSchema = createInsertSchema(games).omit({
 });
 
 export const insertGameSessionSchema = createInsertSchema(gameSessions).omit({
-  id: true,
   createdAt: true,
   updatedAt: true,
 });

@@ -393,7 +393,10 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
 
   app.post('/api/game-sessions', isAuthenticated, async (req: any, res) => {
     try {
-      const sessionData = insertGameSessionSchema.parse(req.body);
+      const sessionData = insertGameSessionSchema.parse({
+        ...req.body,
+        id: req.body.id || `session-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
+      });
       const newSession = await storage.createGameSession(sessionData);
       res.json(newSession);
     } catch (error) {
