@@ -1,95 +1,151 @@
-# Vercel Environment Variables Setup Guide
+# 🚀 Vercel Environment Variables Setup Guide
 
-## **CRITICAL: Environment Variables for Vercel Deployment**
+## **Critical: Environment Variables Required for Deployment**
 
-Your application is failing on Vercel because of missing or incorrectly named environment variables. Follow this guide to fix the deployment.
+Your TeacherToolkit application requires specific environment variables to work properly on Vercel. Follow this guide to set them up correctly.
 
-### **Required Environment Variables for Vercel**
+## **Step 1: Access Vercel Environment Variables**
 
-Add these environment variables in your Vercel dashboard:
+1. Go to your Vercel dashboard: https://vercel.com/dashboard
+2. Select your TeacherToolkit project
+3. Go to **Settings** → **Environment Variables**
+4. Add the following variables:
 
-#### **1. Database Configuration**
+## **Step 2: Required Environment Variables**
+
+### **Database Configuration**
 ```
-DATABASE_URL=postgresql://postgres:govjir-2natfy-ciCjot@db.sywjrwkokaqhkczlejsb.supabase.co:5432/postgres
+DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres
 ```
 
-#### **2. Frontend Supabase Configuration (CRITICAL)**
+### **Frontend Supabase Configuration (VITE_ prefix required)**
 ```
-VITE_SUPABASE_URL=https://sywjrwkokaqhkczlejsb.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+VITE_SUPABASE_URL=https://[PROJECT-REF].supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
-#### **3. Backend Configuration**
+### **Backend Supabase Configuration**
+```
+NEXT_PUBLIC_SUPABASE_URL=https://[PROJECT-REF].supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
+
+### **Session Security**
 ```
 SESSION_SECRET=your-super-secret-session-key-change-this-in-production
+```
+
+### **Environment**
+```
 NODE_ENV=production
 ```
 
-### **How to Set Environment Variables in Vercel**
+## **Step 3: Optional Environment Variables**
 
-1. **Go to Vercel Dashboard**
-   - Visit [vercel.com](https://vercel.com)
-   - Select your TeacherToolkit project
+### **Google OAuth (if using)**
+```
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+```
 
-2. **Navigate to Settings**
-   - Click on your project
-   - Go to "Settings" tab
-   - Click "Environment Variables"
+### **OpenAI Integration (if using)**
+```
+OPENAI_API_KEY=your-openai-api-key
+```
 
-3. **Add Each Variable**
-   - Click "Add New"
-   - Enter the variable name (e.g., `VITE_SUPABASE_URL`)
-   - Enter the variable value
-   - Select "Production" environment
-   - Click "Save"
+## **Step 4: Environment Variable Configuration**
 
-4. **Redeploy**
-   - After adding all variables, go to "Deployments"
-   - Click "Redeploy" on your latest deployment
+### **For All Environments (Production, Preview, Development)**
+- Check the boxes for all environments
+- This ensures your app works in all deployment scenarios
 
-### **Environment Variable Reference**
+### **Variable Names Must Match Exactly**
+- Frontend variables MUST start with `VITE_`
+- Backend variables can use `NEXT_PUBLIC_` or no prefix
+- Case-sensitive - match exactly as shown above
 
-| Variable | Purpose | Required | Example |
-|----------|---------|----------|---------|
-| `DATABASE_URL` | Supabase database connection | ✅ | `postgresql://postgres:...` |
-| `VITE_SUPABASE_URL` | Frontend Supabase URL | ✅ | `https://sywjrwkokaqhkczlejsb.supabase.co` |
-| `VITE_SUPABASE_ANON_KEY` | Frontend Supabase key | ✅ | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` |
-| `SESSION_SECRET` | Session encryption | ✅ | `your-secret-key` |
-| `NODE_ENV` | Environment mode | ✅ | `production` |
+## **Step 5: Get Your Supabase Values**
 
-### **Common Issues and Solutions**
+1. Go to your Supabase project dashboard
+2. Navigate to **Settings** → **API**
+3. Copy the following values:
+   - **Project URL**: Use for `VITE_SUPABASE_URL`
+   - **anon/public key**: Use for `VITE_SUPABASE_ANON_KEY`
+   - **Database connection string**: Use for `DATABASE_URL`
 
-#### **Issue: "Missing Supabase environment variables"**
-**Solution**: Ensure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set in Vercel
+## **Step 6: Generate Session Secret**
 
-#### **Issue: "Database connection failed"**
-**Solution**: Verify `DATABASE_URL` is correct and accessible from Vercel
+Create a strong session secret:
+```bash
+# Generate a random 32-character string
+openssl rand -base64 32
+```
 
-#### **Issue: "API routes not working"**
-**Solution**: Check that all environment variables are set for "Production" environment
+Or use an online generator and copy the result to `SESSION_SECRET`.
 
-### **Testing Your Setup**
+## **Step 7: Verify Configuration**
 
-After setting environment variables:
+After setting all variables:
 
-1. **Redeploy your application**
-2. **Check the build logs** for any errors
-3. **Test the application** by visiting your Vercel URL
-4. **Check browser console** for any frontend errors
-5. **Test API endpoints** by visiting `/api/classes`
+1. **Redeploy your application** in Vercel
+2. **Check the build logs** for any environment variable errors
+3. **Test the application** to ensure everything works
 
-### **Security Notes**
+## **Common Issues and Solutions**
 
-- ✅ **VITE_ variables** are exposed to the browser (safe for public keys)
-- ✅ **DATABASE_URL** is server-side only (secure)
-- ✅ **SESSION_SECRET** is server-side only (secure)
-- ⚠️ **Never commit** environment variables to Git
+### **"VITE_SUPABASE_URL is not defined"**
+- Ensure the variable name starts with `VITE_`
+- Check that it's set for all environments
+- Redeploy after adding the variable
 
-### **Next Steps**
+### **"DATABASE_URL is not defined"**
+- Verify the connection string format
+- Ensure SSL is enabled in Supabase
+- Check that the database is accessible
 
-1. Set all environment variables in Vercel
-2. Redeploy the application
-3. Test all functionality
-4. Monitor for any remaining issues
+### **"Session secret is weak"**
+- Generate a longer, more complex secret
+- Use at least 32 characters
+- Include letters, numbers, and special characters
 
-Your application should now work properly on Vercel! 🚀 
+### **"Build fails with environment errors"**
+- Check all required variables are set
+- Verify variable names match exactly
+- Ensure no extra spaces or quotes
+
+## **Security Best Practices**
+
+1. **Never commit environment variables to Git**
+2. **Use different values for development and production**
+3. **Rotate secrets regularly**
+4. **Use strong, unique passwords**
+5. **Enable SSL for all database connections**
+
+## **Testing Your Setup**
+
+After deployment, test these features:
+
+1. **Authentication**: Sign up/login should work
+2. **Database Operations**: Creating classes, students, etc.
+3. **API Endpoints**: All `/api/*` routes should respond
+4. **Real-time Features**: Supabase real-time should work
+
+## **Next Steps**
+
+Once environment variables are configured:
+
+1. **Deploy to Vercel**: `vercel --prod`
+2. **Test all functionality**: Ensure everything works
+3. **Monitor logs**: Check for any errors
+4. **Set up monitoring**: Enable Vercel Analytics
+
+## **Support**
+
+If you encounter issues:
+
+1. Check Vercel build logs for specific errors
+2. Verify all environment variables are set correctly
+3. Test database connectivity
+4. Review Supabase project settings
+
+Your TeacherToolkit should now be fully functional on Vercel! 🚀 
