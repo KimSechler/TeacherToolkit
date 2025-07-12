@@ -7,10 +7,7 @@
     },
     {
       "src": "client/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "client/dist/public"
-      }
+      "use": "@vercel/static-build"
     }
   ],
   "routes": [
@@ -20,10 +17,7 @@
     },
     {
       "src": "/(.*)",
-      "dest": "client/dist/public/$1"
+      "dest": "/$1"
     }
-  ],
-  "env": {
-    "NODE_ENV": "production"
-  }
+  ]
 } 
