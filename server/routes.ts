@@ -430,11 +430,25 @@ export async function registerRoutes(app: Express, isAuthenticated: RequestHandl
 
   // Health check endpoint
   app.get('/api/health', (req, res) => {
-    res.json({ 
+    const health = {
       status: 'ok', 
       timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV || 'development'
-    });
+      environment: process.env.NODE_ENV || 'development',
+      supabase: {
+        url: process.env.SUPABASE_URL ? 'SET' : 'NOT SET',
+        anonKey: process.env.SUPABASE_ANON_KEY ? 'SET (length: ' + process.env.SUPABASE_ANON_KEY.length + ')' : 'NOT SET',
+        viteUrl: process.env.VITE_SUPABASE_URL ? 'SET' : 'NOT SET',
+        viteAnonKey: process.env.VITE_SUPABASE_ANON_KEY ? 'SET (length: ' + process.env.VITE_SUPABASE_ANON_KEY.length + ')' : 'NOT SET'
+      },
+      database: {
+        url: process.env.DATABASE_URL ? 'SET' : 'NOT SET'
+      },
+      session: {
+        secret: process.env.SESSION_SECRET ? 'SET' : 'NOT SET'
+      }
+    };
+    
+    res.json(health);
   });
 
   return createServer(app);

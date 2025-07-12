@@ -3,11 +3,33 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
+// Debug logging for frontend environment variables
+console.log('🔍 Frontend Environment Variables:');
+console.log('VITE_SUPABASE_URL:', supabaseUrl ? 'SET' : 'NOT SET');
+console.log('VITE_SUPABASE_ANON_KEY:', supabaseAnonKey ? 'SET (length: ' + supabaseAnonKey.length + ')' : 'NOT SET');
+
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables')
+  console.error('❌ Missing Supabase environment variables!');
+  console.error('VITE_SUPABASE_URL:', supabaseUrl);
+  console.error('VITE_SUPABASE_ANON_KEY:', supabaseAnonKey ? '***HIDDEN***' : 'NOT SET');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true
+  }
+});
+
+// Test the connection
+supabase.auth.getSession().then(({ data, error }) => {
+  if (error) {
+    console.error('❌ Supabase connection test failed:', error);
+  } else {
+    console.log('✅ Supabase connection test successful');
+  }
+});
 
 // Auth helper functions
 export const signInWithEmail = async (email: string, password: string) => {

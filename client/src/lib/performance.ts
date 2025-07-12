@@ -1,132 +1,98 @@
-// Usage:
-// import { performanceMonitor, usePerformanceMeasure, measureApiCall } from './performance';
-// performanceMonitor.startTimer('my-task'); ... performanceMonitor.endTimer('my-task');
-// await measureApiCall('api-call', () => fetch(...));
-// In a React component: usePerformanceMeasure('ComponentName');
+// Performance monitoring utility for production
+export class PerformanceMonitor {
+  private static instance: PerformanceMonitor;
+  private metrics: Map<string, number> = new Map();
+  private errors: Array<{ error: string; timestamp: number; context?: any }> = [];
 
-import React from 'react';
-
-interface PerformanceMetric {
-  name: string;
-  startTime: number;
-  endTime?: number;
-  duration?: number;
-  metadata?: Record<string, any>;
-}
-
-class PerformanceMonitor {
-  private metrics: Map<string, PerformanceMetric> = new Map();
-  private observers: Set<(metric: PerformanceMetric) => void> = new Set();
-
-  startTimer(name: string, metadata?: Record<string, any>): void {
-    this.metrics.set(name, {
-      name,
-      startTime: performance.now(),
-      metadata,
-    });
-  }
-
-  endTimer(name: string): number | null {
-    const metric = this.metrics.get(name);
-    if (!metric) {
-      console.warn(`Performance timer "${name}" not found`);
-      return null;
+  static getInstance(): PerformanceMonitor {
+    if (!PerformanceMonitor.instance) {
+      PerformanceMonitor.instance = new PerformanceMonitor();
     }
-
-    metric.endTime = performance.now();
-    metric.duration = metric.endTime - metric.startTime;
-
-    // Log slow operations
-    if (metric.duration > 1000) {
-      console.warn(`Slow operation detected: ${name} took ${metric.duration.toFixed(2)}ms`, metric.metadata);
-    }
-
-    // Notify observers
-    this.observers.forEach(observer => observer(metric));
-
-    return metric.duration;
+    return PerformanceMonitor.instance;
   }
 
-  measureAsync<T>(name: string, fn: () => Promise<T>, metadata?: Record<string, any>): Promise<T> {
-    this.startTimer(name, metadata);
-    return fn().finally(() => {
-      this.endTimer(name);
-    });
-  }
-
-  measureSync<T>(name: string, fn: () => T, metadata?: Record<string, any>): T {
-    this.startTimer(name, metadata);
-    try {
-      const result = fn();
-      this.endTimer(name);
-      return result;
-    } catch (error) {
-      this.endTimer(name);
-      throw error;
+  // Track page load performance
+  trackPageLoad(pageName: string) {
+    if (typeof window !== 'undefined' && window.performance) {
+      const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
+      if (navigation) {
+        this.metrics.set(`${pageName}_load_time`, navigation.loadEventEnd - navigation.loadEventStart);
+        this.metrics.set(`${pageName}_dom_content_loaded`, navigation.domContentLoadedEventEnd - navigation.domContentLoadedEventStart);
+        this.metrics.set(`${pageName}_first_paint`, performance.getEntriesByName('first-paint')[0]?.startTime || 0);
+        this.metrics.set(`${pageName}_first_contentful_paint`, performance.getEntriesByName('first-contentful-paint')[0]?.startTime || 0);
+      }
     }
   }
 
-  getMetrics(): PerformanceMetric[] {
-    return Array.from(this.metrics.values());
-  }
-
-  clearMetrics(): void {
-    this.metrics.clear();
-  }
-
-  addObserver(observer: (metric: PerformanceMetric) => void): void {
-    this.observers.add(observer);
-  }
-
-  removeObserver(observer: (metric: PerformanceMetric) => void): void {
-    this.observers.delete(observer);
-  }
-}
-
-// Global performance monitor
-export const performanceMonitor = new PerformanceMonitor();
-
-// React hook for measuring component render time
-export function usePerformanceMeasure(name: string) {
-  React.useEffect(() => {
-    performanceMonitor.startTimer(`render:${name}`);
-    return () => {
-      performanceMonitor.endTimer(`render:${name}`);
-    };
-  });
-}
-
-// Higher-order component for measuring render performance
-export function withPerformanceMeasure<P extends Record<string, any>>(
-  WrappedComponent: React.ComponentType<P>,
-  name: string
-) {
-  return function PerformanceMeasuredComponent(props: P) {
-    usePerformanceMeasure(name);
-    return React.createElement(WrappedComponent, props);
-  };
-}
-
-// Utility for measuring API calls
-export async function measureApiCall<T>(
-  name: string,
-  apiCall: () => Promise<T>,
-  metadata?: Record<string, any>
-): Promise<T> {
-  return performanceMonitor.measureAsync(name, apiCall, metadata);
-}
-
-// Log performance metrics periodically
-if (process.env.NODE_ENV === 'development') {
-  setInterval(() => {
-    const metrics = performanceMonitor.getMetrics();
-    const slowMetrics = metrics.filter(m => m.duration && m.duration > 500);
-    if (slowMetrics.length > 0) {
-      console.group('Performance Report');
-      slowMetrics.forEach(metric => {
-        console.log(`${metric.name}: ${metric.duration?.toFixed(2)}ms`, metric.metadata);
+  // Track API call performance
+  trackApiCall(endpoint: string, duration: number, success: boolean) {
+    const key = `${endpoint}_${success ? 'success' : 'error'}`;
+    this.metrics.set(key, duration);
+    
+    if (!success) {
+      this.errors.push({
+        error: `API call failed: ${endpoint}`,
+        timestamp: Date.now(),
+        context: { endpoint, duration }
       });
-      console.groupEnd();
     }
-  }, 30000); // Every 30 seconds
+  }
+
+  // Track authentication performance
+  trackAuth(action: 'login' | 'logout' | 'signup', duration: number, success: boolean) {
+    const key = `auth_${action}_${success ? 'success' : 'error'}`;
+    this.metrics.set(key, duration);
+    
+    if (!success) {
+      this.errors.push({
+        error: `Auth ${action} failed`,
+        timestamp: Date.now(),
+        context: { action, duration }
+      });
+    }
+  }
+
+  // Track component render performance
+  trackComponentRender(componentName: string, duration: number) {
+    this.metrics.set(`component_${componentName}_render`, duration);
+  }
+
+  // Get performance report
+  getReport() {
+    return {
+      metrics: Object.fromEntries(this.metrics),
+      errors: this.errors,
+      timestamp: Date.now(),
+      userAgent: navigator.userAgent,
+      url: window.location.href
+    };
+  }
+
+  // Send performance data to analytics (placeholder for production)
+  sendToAnalytics() {
+    if (process.env.NODE_ENV === 'production') {
+      const report = this.getReport();
+      // TODO: Send to your analytics service
+      console.log('Performance Report:', report);
+      
+      // Example: Send to Supabase for logging
+      // supabase.from('performance_logs').insert(report);
+    }
+  }
+
+  // Clear metrics (useful for testing)
+  clear() {
+    this.metrics.clear();
+    this.errors = [];
+  }
+}
+
+// Global performance monitor instance
+export const performanceMonitor = PerformanceMonitor.getInstance();
+
+// Auto-send performance data every 5 minutes in production
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
+  setInterval(() => {
+    performanceMonitor.sendToAnalytics();
+  }, 5 * 60 * 1000);
 } 
