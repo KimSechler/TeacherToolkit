@@ -1,10 +1,20 @@
-import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { QueryFunction } from "@tanstack/react-query";
 import { supabase } from "./supabase";
+
+export type UnauthorizedBehavior = "redirect" | "returnNull" | "throw";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    const errorText = await res.text();
+    console.error(`API Error ${res.status}:`, errorText);
+    
+    if (res.status === 401) {
+      // Handle unauthorized - redirect to login
+      window.location.href = '/login';
+      throw new Error('Unauthorized');
+    }
+    
+    throw new Error(`API Error ${res.status}: ${errorText}`);
   }
 }
 
@@ -43,7 +53,10 @@ export async function apiRequest(
     headers["Authorization"] = `Bearer ${session.access_token}`;
   }
 
-  const res = await fetch(url, {
+  // Use relative URLs for API calls (will work with Vercel)
+  const apiUrl = url.startsWith('/api/') ? url : `/api/${url}`;
+
+  const res = await fetch(apiUrl, {
     method,
     headers,
     body,
@@ -54,7 +67,6 @@ export async function apiRequest(
   return res;
 }
 
-type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
 }) => QueryFunction<T> =
@@ -68,7 +80,11 @@ export const getQueryFn: <T>(options: {
       headers["Authorization"] = `Bearer ${session.access_token}`;
     }
 
-    const res = await fetch(queryKey.join("/") as string, {
+    // Use relative URLs for API calls
+    const url = queryKey.join("/") as string;
+    const apiUrl = url.startsWith('/api/') ? url : `/api/${url}`;
+
+    const res = await fetch(apiUrl, {
       headers,
       credentials: "include",
     });
@@ -80,31 +96,3 @@ export const getQueryFn: <T>(options: {
     await throwIfResNotOk(res);
     return await res.json();
   };
-
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      queryFn: getQueryFn({ on401: "throw" }),
-      refetchInterval: false,
-      refetchOnWindowFocus: true, // Enable background updates
-      staleTime: 5 * 60 * 1000, // 5 minutes - reasonable cache time
-      retry: (failureCount, error) => {
-        // Retry network errors, but not auth errors
-        if (error instanceof Error && error.message.includes('401')) {
-          return false;
-        }
-        return failureCount < 3; // Retry up to 3 times
-      },
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
-    },
-    mutations: {
-      retry: (failureCount, error) => {
-        // Don't retry mutations for auth errors
-        if (error instanceof Error && error.message.includes('401')) {
-          return false;
-        }
-        return failureCount < 2; // Retry mutations up to 2 times
-      },
-    },
-  },
-});
