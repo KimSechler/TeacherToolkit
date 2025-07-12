@@ -33,6 +33,9 @@ loadCustomQuestions();
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
 
+  // Debug logging
+  console.log("Router state:", { isAuthenticated, isLoading });
+
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
