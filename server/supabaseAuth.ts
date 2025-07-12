@@ -24,8 +24,8 @@ export function setupSupabaseAuth(app: Express) {
 
       const token = authHeader.substring(7); // Remove 'Bearer ' prefix
       
-      // For now, let's decode the JWT without verification to get user info
-      // In production, you should verify with Supabase's public key
+      // For production, you should verify with Supabase's public key
+      // For now, we'll decode to get user info (you can add verification later)
       const decoded = jwt.decode(token) as any;
 
       if (decoded && decoded.sub) {
@@ -62,16 +62,18 @@ export function setupSupabaseAuth(app: Express) {
 
   // Health check endpoint
   app.get('/api/auth/health', (req, res) => {
-    res.json({ status: 'ok', message: 'Auth service is running' });
+    res.json({ 
+      status: 'ok', 
+      auth: 'supabase',
+      timestamp: new Date().toISOString()
+    });
   });
 }
 
 export const isAuthenticated: RequestHandler = (req, res, next) => {
   if (req.supabaseUser && req.supabaseUser.id) {
-    console.log("User authenticated:", req.supabaseUser.id);
     return next();
   }
   
-  console.log("User not authenticated");
   res.status(401).json({ message: "Unauthorized" });
 }; 

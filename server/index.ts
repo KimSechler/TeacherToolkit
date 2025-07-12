@@ -12,15 +12,16 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Session middleware
+// Session middleware - configured for production
 app.use(session({
   secret: process.env.SESSION_SECRET || "dev-secret-key",
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false, // Set to true in production with HTTPS
+    secure: process.env.NODE_ENV === 'production', // true in production
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    sameSite: 'lax' // Better security
   }
 }));
 
