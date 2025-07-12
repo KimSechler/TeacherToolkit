@@ -16,13 +16,11 @@
       }
     }
   ],
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "api/index.ts"
-    }
-  ],
   "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "api/index.ts"
+    },
     {
       "src": "/(.*)",
       "dest": "client/dist/public/index.html"
