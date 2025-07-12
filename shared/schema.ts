@@ -116,13 +116,14 @@ export const games = pgTable("games", {
 });
 
 // Game sessions table
-export const gameSessions = pgTable("game_sessions", {
-  id: serial("id").primaryKey(),
-  gameId: integer("game_id").notNull().references(() => games.id),
-  classId: integer("class_id").notNull().references(() => classes.id),
-  startedAt: timestamp("started_at").defaultNow(),
-  endedAt: timestamp("ended_at"),
-  results: jsonb("results"), // Student responses and scores
+export const gameSessions = pgTable('game_sessions', {
+  id: varchar('id', { length: 255 }).primaryKey(),
+  hostId: varchar('host_id', { length: 255 }).notNull(),
+  participants: text('participants').array().notNull().default([]),
+  state: jsonb('state').notNull().default({}),
+  started: boolean('started').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
 // AI conversations table
@@ -263,8 +264,7 @@ export const gamesRelations = relations(games, ({ one, many }) => ({
 }));
 
 export const gameSessionsRelations = relations(gameSessions, ({ one }) => ({
-  game: one(games, { fields: [gameSessions.gameId], references: [games.id] }),
-  class: one(classes, { fields: [gameSessions.classId], references: [classes.id] }),
+  host: one(users, { fields: [gameSessions.hostId], references: [users.id] }),
 }));
 
 export const aiConversationsRelations = relations(aiConversations, ({ one }) => ({
@@ -362,7 +362,8 @@ export const insertGameSchema = createInsertSchema(games).omit({
 
 export const insertGameSessionSchema = createInsertSchema(gameSessions).omit({
   id: true,
-  startedAt: true,
+  createdAt: true,
+  updatedAt: true,
 });
 
 export const insertAiConversationSchema = createInsertSchema(aiConversations);
