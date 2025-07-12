@@ -21,9 +21,10 @@ async function getSupabasePublicKey(): Promise<string> {
   }
 
   try {
-    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    // Use the correct environment variable name for backend
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
     if (!supabaseUrl) {
-      throw new Error('VITE_SUPABASE_URL not configured');
+      throw new Error('SUPABASE_URL not configured');
     }
 
     const response = await fetch(`${supabaseUrl}/rest/v1/auth/jwks`);
@@ -69,9 +70,10 @@ export function setupSupabaseAuth(app: Express) {
       try {
         // Get Supabase public key and verify the JWT
         const publicKey = await getSupabasePublicKey();
+        const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
         const decoded = jwt.verify(token, publicKey, { 
           algorithms: ['RS256'],
-          issuer: process.env.VITE_SUPABASE_URL,
+          issuer: supabaseUrl,
           audience: 'authenticated'
         }) as any;
 
